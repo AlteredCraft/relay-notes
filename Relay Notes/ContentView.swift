@@ -47,7 +47,7 @@ struct ContentView: View {
         .task {
             if viewModel == nil {
                 viewModel = RecorderViewModel(
-                    recorder: AudioRecorder(),
+                    engine: LiveAudioEngine(),
                     transcriber: AppleSpeechTranscriber(),
                     modelContext: modelContext,
                     tunings: Tunings()

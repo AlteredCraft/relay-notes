@@ -7,9 +7,28 @@ struct RecorderView: View {
 
     var body: some View {
         VStack(spacing: 12) {
+            partialTranscript
             statusText
             recordButton
             tuningSummary
+        }
+    }
+
+    @ViewBuilder
+    private var partialTranscript: some View {
+        if case .recording(let partial) = viewModel.state, !partial.isEmpty {
+            ScrollView {
+                Text(partial)
+                    .font(.callout)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+            }
+            .frame(maxHeight: 88)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal)
+            .transition(.opacity)
         }
     }
 
@@ -24,10 +43,10 @@ struct RecorderView: View {
             Text("Recording…")
                 .font(.subheadline)
                 .foregroundStyle(.red)
-        case .transcribing:
+        case .finalizing:
             HStack(spacing: 8) {
                 ProgressView()
-                Text("Transcribing…")
+                Text("Finalizing…")
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
@@ -49,19 +68,28 @@ struct RecorderView: View {
                 switch viewModel.state {
                 case .recording:
                     await viewModel.stopAndTranscribe()
-                case .transcribing:
+                case .finalizing:
                     return
                 default:
                     await viewModel.startRecording()
                 }
             }
         } label: {
-            Image(systemName: viewModel.state == .recording ? "stop.circle.fill" : "mic.circle.fill")
+            Image(systemName: isRecording ? "stop.circle.fill" : "mic.circle.fill")
                 .resizable()
                 .frame(width: 80, height: 80)
-                .foregroundStyle(viewModel.state == .recording ? Color.red : Color.accentColor)
+                .foregroundStyle(isRecording ? Color.red : Color.accentColor)
         }
-        .disabled(viewModel.state == .transcribing)
+        .disabled(isFinalizing)
+    }
+
+    private var isRecording: Bool {
+        if case .recording = viewModel.state { return true }
+        return false
+    }
+
+    private var isFinalizing: Bool {
+        viewModel.state == .finalizing
     }
 
     private var tuningSummary: some View {

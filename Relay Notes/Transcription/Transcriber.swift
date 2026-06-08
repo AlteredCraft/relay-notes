@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Speech
 
@@ -6,8 +7,17 @@ struct TranscriptionOptions: Sendable {
     var contextualStrings: [String] = []
 }
 
+protocol TranscriptionSession: Sendable, AnyObject {
+    var audioFormat: AVAudioFormat? { get }
+    var updates: AsyncStream<String> { get }
+    func feed(_ buffer: AVAudioPCMBuffer)
+    func finish() async throws -> String
+    func cancel() async
+}
+
 protocol Transcriber: Sendable {
     func transcribe(_ audio: URL, options: TranscriptionOptions) async throws -> String
+    func makeStreamingSession(options: TranscriptionOptions) async throws -> any TranscriptionSession
 }
 
 enum TranscriptionError: Error {
