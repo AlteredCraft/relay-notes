@@ -37,6 +37,14 @@ struct NoteDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                ShareLink(
+                    item: note.transcript,
+                    subject: Text(note.displayTitle)
+                )
+                .disabled(note.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityLabel("Share transcript")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button(role: .destructive) {
                     showDeleteConfirmation = true
                 } label: {

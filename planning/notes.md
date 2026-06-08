@@ -170,7 +170,7 @@ Sequenced for ~12 hrs/week, iPhone-first.
   - [x] Delete a note — swipe-to-delete on the list, trash button + confirmation alert in detail view, removes both the SwiftData row and the audio file from disk. *(2026-06-08)*
   - [x] Search across transcripts — `.searchable` on the navigation stack, in-memory case-insensitive filter via `String.localizedCaseInsensitiveContains`. Empty-state distinguishes "no notes yet" from "no matches for '<query>'" via `ContentUnavailableView.search(text:)`. *(2026-06-08)*
   - [x] (Stretch) Rename / give a title — `Note.title: String?` (nil = auto-titled from first 6 transcript words with ellipsis). `displayTitle` falls back gracefully. List row leads with title; date and transcript snippet underneath. Detail view has an inline-editable title field at the top; commits on submit or screen-leave. *(2026-06-08)*
-  - [ ] (Stretch) Share transcript text or audio file
+  - [x] (Stretch) Share transcript text — `ShareLink` in `NoteDetailView` toolbar, sharing `note.transcript` with `note.displayTitle` as subject. Disabled when the transcript is whitespace-only. Audio-file sharing intentionally out of scope. *(2026-06-08)*
   - [ ] (Stretch) Live streaming transcription — swap `AVAudioRecorder` for `AVAudioEngine`, feed PCM buffers into `SpeechTranscriber`, stream partial results into the view as you speak
   *Done when: you reach for this daily instead of stock Voice Memos.*
 - [ ] **V1.3 — Ship to yourself.** Personal TestFlight build. Lives on the home screen.
@@ -212,6 +212,7 @@ Sequenced for ~12 hrs/week, iPhone-first.
 - **V1.2 status:** essentials done. Top-level V1.2 checkbox stays open until daily-use validation on the phone confirms the done-when ("reach for this daily instead of stock Voice Memos"). Stretches are open and prioritization-dependent.
 - **Framing pivot — local-first / cloud-opt-in / model-choice axis made explicit.** Doc updated so "offline" and "Apple" are no longer conflated. Three transcriber paths (Apple Speech on-device with no model choice, Local ASR on-device with your-choice models via MLX/whisper.cpp, Cloud STT opt-in only). Same pattern for LLM: local-MLX is the default, cloud is opt-in, Apple Foundation Models are an optional fourth engine (intentionally not primary — Apple is behind the open-source ecosystem on capability as of mid-2026). Pipeline diagram, intro callouts, spine, transcription tier table, inference-engine intro, and architecture notes all updated.
 - **Next options:** (a) carry the build on the phone for a day or two and let actual usage decide what stretch to take, (b) pick a small simulator-testable stretch — **Rename** (smallest, real value) or **Share**, (c) bigger: **Live streaming** (`AVAudioEngine` swap-in — phone-only to validate), (d) jump straight to **V1.3 TestFlight ship**.
+- **V1.2 stretch shipped — share transcript text.** `ShareLink` added to `NoteDetailView` toolbar (`.topBarTrailing`, beside the trash button), sharing `note.transcript` with `note.displayTitle` as subject (nicer Mail/Messages experience). Disabled when the transcript is whitespace-only. Audio-file sharing intentionally out of scope — text-only was the explicit ask.
 
 ---
 
