@@ -11,6 +11,8 @@
 		227E2DCA2FD7572E004EA486 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 		227E2DF22FD75FA3004EA486 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		22C5F4792FD71A7D00FC840C /* Relay Notes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Relay Notes.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		22ED2C9C2FD77D6A0066B2EC /* transcription-tuning.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "transcription-tuning.md"; sourceTree = "<group>"; };
+		22ED2C9D2FD783740066B2EC /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CLAUDE.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -35,6 +37,7 @@
 		227E2DAA2FD71F92004EA486 /* planning */ = {
 			isa = PBXGroup;
 			children = (
+				22ED2C9C2FD77D6A0066B2EC /* transcription-tuning.md */,
 				227E2DA92FD71F92004EA486 /* notes.md */,
 			);
 			path = planning;
@@ -43,6 +46,7 @@
 		22C5F4702FD71A7D00FC840C = {
 			isa = PBXGroup;
 			children = (
+				22ED2C9D2FD783740066B2EC /* CLAUDE.md */,
 				227E2DF22FD75FA3004EA486 /* README.md */,
 				227E2DCA2FD7572E004EA486 /* .gitignore */,
 				227E2DAA2FD71F92004EA486 /* planning */,
