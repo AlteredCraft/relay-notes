@@ -4,19 +4,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this app is
 
-iOS SwiftUI voice-notes app. v1 scope is intentionally narrow: tap → speak → on-device transcript saved. All LLM cleanup/categorization is deferred. Target device is iPhone 15 Pro Max; v1 ships to a personal device via TestFlight (not App Store).
+iOS SwiftUI voice-notes app. v1 scope is intentionally narrow: tap → speak → on-device transcript saved. All LLM cleanup/categorization is deferred. Target device is iPhone 15 Pro Max; v1 ships to a personal device via Developer Mode sideload (free Apple ID tier — paid Apple Developer Program enrollment is deferred until on-device MLX inference is validated; see `planning/notes.md` V1.3 / V1.4).
 
-The authoritative design docs live in `planning/`:
-- `planning/notes.md` — full build plan, scope decisions, progress log, V1.1 accuracy tuning empirical table.
+The authoritative docs are:
+- `planning/notes.md` — full build plan, scope decisions, V1.1 accuracy tuning empirical table.
 - `planning/transcription-tuning.md` — every transcription dial (UI + hidden), current default + why, decisions log.
+- `CHANGE_LOG.md` — running time-ordered narrative of what shipped and why.
 
 Read these before making non-trivial decisions; they encode constraints that don't show up in the code (e.g. "local-first by default, cloud is opt-in", "on-device ≠ Apple-only").
+
+## Change log maintenance (read this)
+
+**Append an entry to `CHANGE_LOG.md` after every shippable change.** This is non-optional — the change log is how the project narrative survives across sessions. Without it, the *why* behind shipped work has to be reconstructed from `git log` (which is terse) or rediscovered (expensive).
+
+What counts as "shippable": any commit-worthy unit of work — a feature, an architectural change, a planning pivot, a notable bug fix, a doc that future-you would want to know exists. Trivial typo fixes don't need entries.
+
+Format:
+- Add under the current date's `## YYYY-MM-DD` section. If the date has rolled over, create a new section above the previous one's bullets.
+- One bullet per shippable unit. Bold lead-in summarizing what shipped, then the *why* / non-obvious context.
+- Identifier-rich is good (file paths, function names, identifiers). Comma-prose is bad.
+- Past tense, terse, declarative.
+
+When to *not* write to the change log: short conversations, exploratory questions, code reading that didn't produce a change.
 
 ## Repo layout
 
 - `Relay Notes/` — Swift source (Xcode group/target).
 - `Relay Notes.xcodeproj/` — Xcode project.
 - `planning/` — design docs (folder reference in Xcode, not a target member).
+- `CHANGE_LOG.md` — running ship narrative at the repo root.
 
 ## Build & validate
 
