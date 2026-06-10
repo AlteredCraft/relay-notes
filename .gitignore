@@ -63,3 +63,9 @@ fastlane/test_output
 
 # MacOS
 .DS_Store
+
+# Whisper weights — staged into the app bundle by scripts/fetch-whisper-tiny.sh,
+# kept out of git for size (~75 MB npz, ~150 MB safetensors). T1.2 will replace
+# this with an in-app URLSession downloader into Application Support.
+Relay Notes/Relay Notes/Resources/whisper-tiny.en/weights.npz
+Relay Notes/Relay Notes/Resources/whisper-tiny.en/weights.safetensors

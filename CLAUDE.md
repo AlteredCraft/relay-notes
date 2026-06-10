@@ -38,6 +38,20 @@ When to *not* write to the change log: short conversations, exploratory question
 
 `Relay Notes/Info.plist` holds only keys Xcode can't auto-generate (currently `UIBackgroundModes = [audio]`, which makes locked-screen recording work — see `CHANGE_LOG.md` 2026-06-09). The build keeps `GENERATE_INFOPLIST_FILE = YES` *and* points `INFOPLIST_FILE` at this file; Xcode merges the generated keys (usage strings, orientations, etc.) on top of it. Two gotchas: (1) `INFOPLIST_KEY_UIBackgroundModes` is a no-op — that key isn't in Xcode's generatable allowlist, hence the file. (2) The target uses a file-system-synchronized group, so the file is excluded from Copy Bundle Resources via a `PBXFileSystemSynchronizedBuildFileExceptionSet` in the pbxproj — without that exception you get "Multiple commands produce Info.plist". Add new non-generatable plist keys here, not via `INFOPLIST_KEY_*`.
 
+### Whisper assets are bundled and resources are flat at the .app root
+
+For T1.1b, Whisper's small assets live in `Relay Notes/Relay Notes/Resources/whisper-tiny.en/` and get picked up automatically by the synchronized-group rule. The 75 MB `weights.npz` is **gitignored** and fetched via `scripts/fetch-whisper-tiny.sh` (which calls `scripts/convert-whisper-assets.py` to convert npz → safetensors, since `mlx-swift`'s `loadArrays(url:)` only reads safetensors — Python `mlx.load` handles both, the Swift binding doesn't). T1.2 will replace this bundling pattern with an in-app URLSession download into Application Support; the on-disk layout there will use real subdirectories.
+
+**Resources are flat in the built app** — Xcode's file-system-synchronized group does not preserve the `Resources/whisper-tiny.en/` hierarchy at build time, so `Bundle.main.url(forResource:withExtension:)` lookups *omit* the `subdirectory:` argument. Fine for T1.1b (single model variant); revisit if we ever bundle multiple variants whose filenames would collide.
+
+### MLX tests are device-only — gate with `#if !targetEnvironment(simulator)`
+
+`mlx-swift` crashes on the iOS Simulator because the simulator's Metal GPU does not advertise the required `MTLGPUFamily`. Any test that allocates an `MLXArray` or calls an MLX op kills the test runner mid-suite and takes the rest of the tests down with it. Convention for `Relay NotesTests/Whisper*Tests.swift`:
+
+- **Simulator-safe** tests (constants, precondition error throwing, AVFoundation-only paths) live at the top of the suite and run on every `xcodebuild test`.
+- **Device-only** tests (anything touching `MLXArray`, `loadArrays`, MLX-using helpers) are gated behind `#if !targetEnvironment(simulator)`. They compile but never execute on the simulator.
+- The corresponding numerical / shape validation happens via the `#if DEBUG` smoke button in the Tuning sheet (`MLXSmoke.run()` → exercises each Whisper sub-pipeline on the iPhone 15 Pro Max and prints to the Xcode console).
+
 ## Build & validate
 
 Use the `xcode-tools` MCP server (see global CLAUDE.md). Order of preference for verifying work:

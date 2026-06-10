@@ -1,0 +1,126 @@
+import AVFoundation
+import Foundation
+import Testing
+@testable import Relay_Notes
+
+#if !targetEnvironment(simulator)
+import MLX
+#endif
+
+/// Shape + sanity tests for the mel pipeline (T1.1b-1).
+///
+/// **Why the simulator guard:** mlx-swift crashes on iOS Simulator because the
+/// simulator's Metal GPU does not advertise the required `MTLGPUFamily`. The
+/// constants test + AVFoundation PCM loader + error-throwing test run on the
+/// simulator; everything that touches an `MLXArray` is gated behind
+/// `#if !targetEnvironment(simulator)` and must be exercised via the
+/// `#if DEBUG` MLX-smoke button on the iPhone 15 Pro Max instead.
+///
+/// Numerical correctness against the Python reference is deferred to T1.1b-3
+/// once the model is wired up — an end-to-end transcript match is a stronger
+/// signal than per-frame value comparison.
+struct WhisperAudioTests {
+
+    // MARK: - Simulator-safe (no MLX touched)
+
+    @Test
+    func constantsMatchPythonReference() {
+        #expect(WhisperAudio.sampleRate == 16_000)
+        #expect(WhisperAudio.nFFT == 400)
+        #expect(WhisperAudio.hopLength == 160)
+        #expect(WhisperAudio.nSamples == 480_000)
+        #expect(WhisperAudio.nFrames == 3_000)
+    }
+
+    @Test
+    func melFiltersRejectsUnsupportedBinCount() {
+        // The precondition fires before any MLX call, so this is simulator-safe.
+        #expect(throws: WhisperAudio.Error.self) {
+            _ = try WhisperAudio.melFilters(nMels: 64)
+        }
+    }
+
+    @Test
+    func loadPCMFromBundledFLAC() throws {
+        let url = try #require(Bundle.main.url(
+            forResource: "ls_test",
+            withExtension: "flac"
+        ), "ls_test.flac must be bundled in the app")
+        let pcm = try WhisperAudio.loadPCM(url: url)
+        // LibriSpeech samples are typically a few seconds at 16 kHz —
+        // confirm a non-trivial decode happened in the expected format.
+        #expect(pcm.count > WhisperAudio.sampleRate)            // > 1 s
+        #expect(pcm.count < WhisperAudio.sampleRate * 60)       // < 60 s sanity cap
+    }
+
+    // MARK: - Device-only (MLX-using)
+
+    #if !targetEnvironment(simulator)
+
+    @Test
+    func padOrTrimPadsShortAudio() {
+        let short = zeros([1_000], dtype: .float32)
+        let padded = WhisperAudio.padOrTrim(short, length: 16_000)
+        #expect(padded.shape == [16_000])
+    }
+
+    @Test
+    func padOrTrimTrimsLongAudio() {
+        let long = zeros([20_000], dtype: .float32)
+        let trimmed = WhisperAudio.padOrTrim(long, length: 16_000)
+        #expect(trimmed.shape == [16_000])
+    }
+
+    @Test
+    func padOrTrimPassesExactLengthThrough() {
+        let exact = zeros([16_000], dtype: .float32)
+        let result = WhisperAudio.padOrTrim(exact, length: 16_000)
+        #expect(result.shape == [16_000])
+    }
+
+    @Test
+    func hanningWindowShapeAndExtremes() {
+        let w = WhisperAudio.hanning(WhisperAudio.nFFT)
+        #expect(w.shape == [WhisperAudio.nFFT])
+        // First sample of a periodic Hann is 0.
+        let first: Float = w[0].item()
+        #expect(abs(first) < 1e-6)
+        // Middle sample is 1.
+        let middle: Float = w[WhisperAudio.nFFT / 2].item()
+        #expect(abs(middle - 1.0) < 1e-6)
+        // All values non-negative.
+        let minVal: Float = w.min().item()
+        #expect(minVal >= 0)
+    }
+
+    @Test
+    func melFiltersLoadFromBundle() throws {
+        let filters = try WhisperAudio.melFilters(nMels: 80)
+        #expect(filters.shape == [80, WhisperAudio.nFFT / 2 + 1])
+    }
+
+    @Test
+    func logMelSpectrogramShapeFromZeroAudio() throws {
+        let silence = zeros([WhisperAudio.nSamples], dtype: .float32)
+        let mel = try WhisperAudio.logMelSpectrogram(audio: silence)
+        #expect(mel.shape == [WhisperAudio.nFrames, 80])
+    }
+
+    @Test
+    func endToEndLogMelFromBundledFLAC() throws {
+        let url = try #require(Bundle.main.url(
+            forResource: "ls_test",
+            withExtension: "flac"
+        ))
+        let pcm = try WhisperAudio.loadPCM(url: url)
+        let audio = WhisperAudio.padOrTrim(MLXArray(pcm))
+        let mel = try WhisperAudio.logMelSpectrogram(audio: audio)
+        #expect(mel.shape == [WhisperAudio.nFrames, 80])
+        let maxVal: Float = mel.max().item()
+        let minVal: Float = mel.min().item()
+        #expect(maxVal <= 1.0 + 1e-3)
+        #expect(minVal >= -1.0 - 1e-3)
+    }
+
+    #endif
+}
