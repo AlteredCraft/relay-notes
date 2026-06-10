@@ -12,6 +12,7 @@ nonisolated enum MLXSmoke {
     static func run() {
         runMLXHello()
         runWhisperAudio()
+        runWhisperModel()
     }
 
     // MARK: - T1.1a — mlx-swift runtime sanity
@@ -57,6 +58,41 @@ nonisolated enum MLXSmoke {
             let melMax: Float = mel.max().item()
             print("  log-mel shape              = \(mel.shape)")
             print("  log-mel value range        = [\(melMin), \(melMax)]")
+        } catch {
+            print("  ERROR: \(error)")
+        }
+    }
+
+    // MARK: - T1.1b-3 — model load + encoder
+
+    private static func runWhisperModel() {
+        print("[MLXSmoke] WhisperModel:")
+        do {
+            let loadStart = Date()
+            let model = try WhisperModel.loadFromBundle()
+            let loadMs = Int(Date().timeIntervalSince(loadStart) * 1000)
+            print("  load time                  = \(loadMs) ms")
+            print("  dims.n_audio_state         = \(model.dims.n_audio_state)")
+            print("  dims.n_audio_layer         = \(model.dims.n_audio_layer)")
+            print("  dims.n_text_layer          = \(model.dims.n_text_layer)")
+            print("  dims.n_vocab               = \(model.dims.n_vocab)")
+
+            guard let flacURL = Bundle.main.url(forResource: "ls_test", withExtension: "flac") else {
+                print("  ls_test.flac NOT FOUND — skipping encoder smoke")
+                return
+            }
+            let pcm = try WhisperAudio.loadPCM(url: flacURL)
+            let audio = WhisperAudio.padOrTrim(MLXArray(pcm))
+            let mel = try WhisperAudio.logMelSpectrogram(audio: audio)
+            // Encoder expects [B, n_frames, n_mels]. Add a batch dim.
+            let melBatch = expandedDimensions(mel, axis: 0)
+
+            let encStart = Date()
+            let features = model.embedAudio(melBatch)
+            eval(features)
+            let encMs = Int(Date().timeIntervalSince(encStart) * 1000)
+            print("  audio features shape       = \(features.shape)")
+            print("  encoder time               = \(encMs) ms")
         } catch {
             print("  ERROR: \(error)")
         }
