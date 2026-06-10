@@ -116,10 +116,13 @@ struct WhisperAudioTests {
         let audio = WhisperAudio.padOrTrim(MLXArray(pcm))
         let mel = try WhisperAudio.logMelSpectrogram(audio: audio)
         #expect(mel.shape == [WhisperAudio.nFrames, 80])
+        // Whisper's normalization is `(log10(mel) + 4) / 4` floored at `max - 8`.
+        // That doesn't cap the absolute range — it bounds the *dynamic* range:
+        // max − min ≤ 8 / 4 = 2 (within float precision). Validated on device
+        // 2026-06-10 (max=1.573, min=-0.427 → diff exactly 2.0).
         let maxVal: Float = mel.max().item()
         let minVal: Float = mel.min().item()
-        #expect(maxVal <= 1.0 + 1e-3)
-        #expect(minVal >= -1.0 - 1e-3)
+        #expect(maxVal - minVal <= 2.0 + 1e-3)
     }
 
     #endif
