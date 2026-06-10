@@ -6,7 +6,22 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		0AA641161B4B07CA3819EDF5 /* RecorderInterruptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B492830A62977826130AD2F /* RecorderInterruptionTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		6CD2DC3B72AFFABD7CF92CA5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 22C5F4712FD71A7D00FC840C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 22C5F4782FD71A7D00FC840C;
+			remoteInfo = "Relay Notes";
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		0B492830A62977826130AD2F /* RecorderInterruptionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RecorderInterruptionTests.swift; path = "Relay NotesTests/RecorderInterruptionTests.swift"; sourceTree = "<group>"; };
 		227E2DA92FD71F92004EA486 /* notes.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = notes.md; sourceTree = "<group>"; };
 		227E2DCA2FD7572E004EA486 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 		227E2DF22FD75FA3004EA486 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
@@ -14,7 +29,18 @@
 		22ED2C9C2FD77D6A0066B2EC /* transcription-tuning.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "transcription-tuning.md"; sourceTree = "<group>"; };
 		22ED2C9D2FD783740066B2EC /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CLAUDE.md; sourceTree = "<group>"; };
 		22ED2CA02FD78F8C0066B2EC /* CHANGE_LOG.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CHANGE_LOG.md; sourceTree = "<group>"; };
+		B4307D11F9D6B95E232E9FBF /* Relay NotesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Relay NotesTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		22C5F4A02FD71A7E00FC840C /* Exceptions for "Relay Notes" folder in "Relay Notes" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 22C5F4782FD71A7D00FC840C /* Relay Notes */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		22C5F47B2FD71A7D00FC840C /* Relay Notes */ = {
@@ -27,18 +53,15 @@
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		22C5F4A02FD71A7E00FC840C /* Exceptions for "Relay Notes" folder in "Relay Notes" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 22C5F4782FD71A7D00FC840C /* Relay Notes */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFrameworksBuildPhase section */
 		22C5F4762FD71A7D00FC840C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		542BDD69EE773869FC43353C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -67,6 +90,7 @@
 				227E2DAA2FD71F92004EA486 /* planning */,
 				22C5F47B2FD71A7D00FC840C /* Relay Notes */,
 				22C5F47A2FD71A7D00FC840C /* Products */,
+				A648706A9E4B2C82B3E2970B /* Relay NotesTests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -74,9 +98,18 @@
 			isa = PBXGroup;
 			children = (
 				22C5F4792FD71A7D00FC840C /* Relay Notes.app */,
+				B4307D11F9D6B95E232E9FBF /* Relay NotesTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
+		};
+		A648706A9E4B2C82B3E2970B /* Relay NotesTests */ = {
+			isa = PBXGroup;
+			children = (
+				0B492830A62977826130AD2F /* RecorderInterruptionTests.swift */,
+			);
+			name = "Relay NotesTests";
+			sourceTree = SOURCE_ROOT;
 		};
 /* End PBXGroup section */
 
@@ -97,11 +130,27 @@
 				22C5F47B2FD71A7D00FC840C /* Relay Notes */,
 			);
 			name = "Relay Notes";
-			packageProductDependencies = (
-			);
 			productName = "Relay Notes";
 			productReference = 22C5F4792FD71A7D00FC840C /* Relay Notes.app */;
 			productType = "com.apple.product-type.application";
+		};
+		E67809CAB7799292E3CB6708 /* Relay NotesTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0E49854C9A8D05AABC232173 /* Build configuration list for PBXNativeTarget "Relay NotesTests" */;
+			buildPhases = (
+				CC87FC829604D99E683841DF /* Sources */,
+				542BDD69EE773869FC43353C /* Frameworks */,
+				4C5085DEAC15E868E094861B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2D534657632A06C453A46DD0 /* PBXTargetDependency */,
+			);
+			name = "Relay NotesTests";
+			productName = "Relay NotesTests";
+			productReference = B4307D11F9D6B95E232E9FBF /* Relay NotesTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -133,12 +182,20 @@
 			projectRoot = "";
 			targets = (
 				22C5F4782FD71A7D00FC840C /* Relay Notes */,
+				E67809CAB7799292E3CB6708 /* Relay NotesTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		22C5F4772FD71A7D00FC840C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4C5085DEAC15E868E094861B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -155,7 +212,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CC87FC829604D99E683841DF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0AA641161B4B07CA3819EDF5 /* RecorderInterruptionTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		2D534657632A06C453A46DD0 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = "Relay Notes";
+			target = 22C5F4782FD71A7D00FC840C /* Relay Notes */;
+			targetProxy = 6CD2DC3B72AFFABD7CF92CA5 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		22C5F4822FD71A7E00FC840C /* Debug */ = {
@@ -286,6 +360,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 5JAU42ATTD;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Relay Notes/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Relay Notes";
@@ -349,9 +424,61 @@
 			};
 			name = Release;
 		};
+		68D0EECF12B18C653D97DDC6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5JAU42ATTD;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "alteredcraft.Relay-NotesTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Relay Notes.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Relay Notes";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		C453D523C93E38F06BC59FDE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5JAU42ATTD;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "alteredcraft.Relay-NotesTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Relay Notes.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Relay Notes";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		0E49854C9A8D05AABC232173 /* Build configuration list for PBXNativeTarget "Relay NotesTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				68D0EECF12B18C653D97DDC6 /* Release */,
+				C453D523C93E38F06BC59FDE /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		22C5F4742FD71A7D00FC840C /* Build configuration list for PBXProject "Relay Notes" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

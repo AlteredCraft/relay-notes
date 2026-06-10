@@ -8,6 +8,7 @@ final class RecorderViewModel {
     enum State: Equatable {
         case idle
         case recording(partial: String)
+        case paused(partial: String)
         case finalizing
         case finished(transcript: String)
         case failed(message: String)
@@ -24,6 +25,7 @@ final class RecorderViewModel {
     private var session: (any TranscriptionSession)?
     private var feedTask: Task<Void, Never>?
     private var updatesTask: Task<Void, Never>?
+    private var interruptionTask: Task<Void, Never>?
     private var currentAudioURL: URL?
 
     init(
@@ -64,6 +66,13 @@ final class RecorderViewModel {
                 }
             }
 
+            interruptionTask = Task { [weak self] in
+                for await event in recording.interruptions {
+                    guard let self else { return }
+                    await self.handleInterruption(event)
+                }
+            }
+
             state = .recording(partial: "")
         } catch RecordingError.microphoneDenied {
             await cleanupAfterFailure()
@@ -81,12 +90,17 @@ final class RecorderViewModel {
     }
 
     func stopAndTranscribe() async {
-        guard case .recording = state else { return }
+        switch state {
+        case .recording, .paused: break
+        default: return
+        }
         state = .finalizing
 
         let url = await engine.stop()
         feedTask?.cancel()
         feedTask = nil
+        interruptionTask?.cancel()
+        interruptionTask = nil
 
         guard let session, let url else {
             updatesTask?.cancel()
@@ -123,11 +137,40 @@ final class RecorderViewModel {
         state = .idle
     }
 
+    /// Pure mapping for the side-effect-free interruption transitions, factored out so it can be
+    /// unit-tested without constructing the view model. Returns the next state, or `nil` when the
+    /// event causes no direct state change (the caller may still run a side effect, e.g. finalizing
+    /// on `.stopped`).
+    static func nextState(for event: InterruptionEvent, from state: State) -> State? {
+        switch (event, state) {
+        case let (.began, .recording(partial)):
+            return .paused(partial: partial)
+        case let (.resumed, .paused(partial)):
+            return .recording(partial: partial)
+        default:
+            return nil
+        }
+    }
+
+    private func handleInterruption(_ event: InterruptionEvent) async {
+        if let next = Self.nextState(for: event, from: state) {
+            state = next
+            return
+        }
+        // `.stopped` with no resume path: finalize so the captured audio isn't lost — there is no
+        // manual "resume" affordance in the tap-to-record UI.
+        if case .stopped = event, case .paused = state {
+            await stopAndTranscribe()
+        }
+    }
+
     private func cleanupAfterFailure() async {
         feedTask?.cancel()
         feedTask = nil
         updatesTask?.cancel()
         updatesTask = nil
+        interruptionTask?.cancel()
+        interruptionTask = nil
         if let session {
             await session.cancel()
         }

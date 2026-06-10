@@ -16,7 +16,7 @@ struct RecorderView: View {
 
     @ViewBuilder
     private var partialTranscript: some View {
-        if case .recording(let partial) = viewModel.state, !partial.isEmpty {
+        if let partial = livePartial, !partial.isEmpty {
             ScrollView {
                 Text(partial)
                     .font(.callout)
@@ -43,6 +43,10 @@ struct RecorderView: View {
             Text("Recording…")
                 .font(.subheadline)
                 .foregroundStyle(.red)
+        case .paused:
+            Label("Paused — interrupted", systemImage: "pause.circle.fill")
+                .font(.subheadline)
+                .foregroundStyle(.orange)
         case .finalizing:
             HStack(spacing: 8) {
                 ProgressView()
@@ -66,7 +70,7 @@ struct RecorderView: View {
         Button {
             Task {
                 switch viewModel.state {
-                case .recording:
+                case .recording, .paused:
                     await viewModel.stopAndTranscribe()
                 case .finalizing:
                     return
@@ -84,12 +88,21 @@ struct RecorderView: View {
     }
 
     private var isRecording: Bool {
-        if case .recording = viewModel.state { return true }
-        return false
+        switch viewModel.state {
+        case .recording, .paused: return true
+        default: return false
+        }
     }
 
     private var isFinalizing: Bool {
         viewModel.state == .finalizing
+    }
+
+    private var livePartial: String? {
+        switch viewModel.state {
+        case .recording(let partial), .paused(let partial): return partial
+        default: return nil
+        }
     }
 
     private var tuningSummary: some View {

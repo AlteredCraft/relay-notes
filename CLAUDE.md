@@ -44,9 +44,11 @@ Use the `xcode-tools` MCP server (see global CLAUDE.md). Order of preference for
 
 1. `XcodeRefreshCodeIssuesInFile` — fast per-file diagnostics. Run after every edit.
 2. `BuildProject` — full build. Run before claiming a multi-file change works.
-3. **No test target exists yet** (per `planning/notes.md` 2026-06-08 log). When tests are added, the plan is the Swift `Testing` framework for unit tests and XCUIAutomation for UI tests.
+3. **Tests:** the `Relay NotesTests` target uses the Swift `Testing` framework (`import Testing`, `@Test`/`#expect`), hosted in the app (`@testable import Relay_Notes`). Run with: `xcodebuild test -project "Relay Notes.xcodeproj" -scheme "Relay Notes" -destination 'platform=iOS Simulator,name=iPhone 17 Pro'`. Coverage is currently thin (just the recorder interruption state-transition logic) — grow it as logic accrues. UI tests (XCUIAutomation) are still unplanned. The scheme `Relay Notes` is **shared** (`xcshareddata/xcschemes/`) so the test action is reproducible from the CLI.
 
 There is no linter configured.
+
+**Editing the `.xcodeproj` (adding targets, files, build settings):** prefer the `xcodeproj` Ruby gem over hand-editing `project.pbxproj`. The project uses Xcode 16 file-system-synchronized groups; the gem (1.27.0) round-trips them safely (it reorders sections but preserves the sync groups and the `PBXFileSystemSynchronizedBuildFileExceptionSet`). Validate any project mutation on a full-repo copy in `/tmp` (build + test there) before applying it to the real project — git is the backstop if it goes wrong.
 
 ## Architecture spine — provider abstraction
 
@@ -104,5 +106,5 @@ If you find yourself reaching for Apple Foundation Models or cloud-by-default, y
 
 - **`@MainActor @Observable`** for view-state types that hold mutable UI state. View models are constructed lazily in `ContentView.task` and injected into views.
 - **Swift 6 strict concurrency** — both `AudioPlayer` and `LiveAudioEngine` are `@MainActor`; the audio-thread surfaces use explicit Sendable boundaries. Polling for playback progress uses a `Task` loop, not `Timer`, to keep concurrency clean.
-- **Tap-to-record state machine** lives in `RecorderViewModel.State`: `.idle / .recording(partial:) / .finalizing / .finished / .failed`. The `partial` is updated from the streaming transcriber's `updates` stream while recording.
+- **Tap-to-record state machine** lives in `RecorderViewModel.State`: `.idle / .recording(partial:) / .paused(partial:) / .finalizing / .finished / .failed`. The `partial` is updated from the streaming transcriber's `updates` stream while recording. `.paused` is driven by `AVAudioSession` interruptions (call/alarm/Siri): `LiveAudioEngine` surfaces them as an `AsyncStream<InterruptionEvent>` (`.began`/`.resumed`/`.stopped`) on the `LiveRecording`; `.began` → paused, `.resumed` → recording, `.stopped` → auto-finalize (no manual-resume affordance by design).
 - **Error messages shown to users are generic and actionable** (e.g. "Couldn't start recording. Please try again."). Specific framework errors stay in logs / debugger.

@@ -14,9 +14,16 @@ enum RecordingError: Error {
     case audioFileCreationFailed(any Error)
 }
 
+enum InterruptionEvent: Sendable {
+    case began      // the system took the audio session; capture is paused
+    case resumed    // the session recovered; capture is live again
+    case stopped    // the interruption ended without resuming; finalize what was captured
+}
+
 struct LiveRecording: Sendable {
     let url: URL
     let buffers: AsyncStream<AVAudioPCMBuffer>
+    let interruptions: AsyncStream<InterruptionEvent>
 }
 
 @MainActor
@@ -24,6 +31,8 @@ final class LiveAudioEngine {
     private let engine = AVAudioEngine()
     private var tapState: TapState?
     private var currentURL: URL?
+    private var interruptionContinuation: AsyncStream<InterruptionEvent>.Continuation?
+    private var interruptionObserver: (any NSObjectProtocol)?
 
     func start(options: RecordingOptions, analyzerFormat: AVAudioFormat?) async throws -> LiveRecording {
         let granted = await AVAudioApplication.requestRecordPermission()
@@ -93,20 +102,75 @@ final class LiveAudioEngine {
             throw RecordingError.startFailed(error)
         }
 
-        return LiveRecording(url: url, buffers: buffers)
+        let (interruptions, interruptionContinuation) = AsyncStream.makeStream(of: InterruptionEvent.self)
+        self.interruptionContinuation = interruptionContinuation
+        self.interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard
+                let info = notification.userInfo,
+                let rawType = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+                let type = AVAudioSession.InterruptionType(rawValue: rawType)
+            else { return }
+            let rawOptions = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            let shouldResume = AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume)
+            // `queue: .main` guarantees delivery on the main thread, i.e. the MainActor's executor.
+            MainActor.assumeIsolated {
+                self?.handleInterruption(type: type, shouldResume: shouldResume)
+            }
+        }
+
+        return LiveRecording(url: url, buffers: buffers, interruptions: interruptions)
     }
 
     func stop() async -> URL? {
+        // removeTap is a no-op when no tap is installed, so call it unconditionally — an
+        // interruption-stopped engine reports `isRunning == false` but still holds the tap.
+        engine.inputNode.removeTap(onBus: 0)
         if engine.isRunning {
-            engine.inputNode.removeTap(onBus: 0)
             engine.stop()
         }
+        if let interruptionObserver {
+            NotificationCenter.default.removeObserver(interruptionObserver)
+        }
+        interruptionObserver = nil
+        interruptionContinuation?.finish()
+        interruptionContinuation = nil
         tapState?.finish()
         let url = currentURL
         tapState = nil
         currentURL = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         return url
+    }
+
+    private func handleInterruption(type: AVAudioSession.InterruptionType, shouldResume: Bool) {
+        switch type {
+        case .began:
+            // The system has already stopped the engine and deactivated our session. Nothing
+            // is captured until the interruption ends; surface it so the UI can show "paused".
+            interruptionContinuation?.yield(.began)
+        case .ended:
+            // Honor the system's resume hint. When set, reactivate and restart so capture
+            // continues into the same file and transcription session (the tap is still
+            // installed). Otherwise — or if restart fails — report stopped so the caller can
+            // finalize what was already captured rather than lose the note.
+            guard shouldResume else {
+                interruptionContinuation?.yield(.stopped)
+                return
+            }
+            do {
+                try AVAudioSession.sharedInstance().setActive(true)
+                try engine.start()
+                interruptionContinuation?.yield(.resumed)
+            } catch {
+                interruptionContinuation?.yield(.stopped)
+            }
+        @unknown default:
+            break
+        }
     }
 }
 
