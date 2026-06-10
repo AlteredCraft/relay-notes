@@ -160,9 +160,9 @@ For `WhisperMLXTranscriber` the streaming/file-based distinction collapses to on
 
 ### The dials
 
-| # | Dial | Range / values | Planned default |
+| # | Dial | Range / values | Current default |
 |---|---|---|---|
-| 1 | Model variant | `whisper-tiny.en` for T1.1b smoke; `whisper-small.en` is the T1.2 production target (entitlement-gated) | `tiny.en` (T1.1b) → `small.en` (T1.2, conditional) |
+| 1 | Model variant | `whisper-small.en` is the default (empirically validated on iPhone 15 Pro Max without the increased-memory-limit entitlement); `whisper-tiny.en` available as a lower-friction fallback | `small.en` |
 | 2 | Language | `en` only in the first cut (multilingual deferred until Tier 2 stabilizes) | `en` |
 
 Both are exposed in the Settings sheet under "Transcription engine → On-device (Whisper)" — visible only when Whisper is the selected engine.
@@ -204,6 +204,7 @@ Both are exposed in the Settings sheet under "Transcription engine → On-device
 | 2026-06-10 | `TranscriptionOptions` becomes a sum type (`.apple` / `.whisperMLX`) | Two engines with different parameter sets; sum is type-safe with no nullable fields and matches `TranscriptionEngine` selection in `Tunings` |
 | 2026-06-10 | T1.1 split into T1.1a (mlx-swift "hello on device") + T1.1b (Whisper transcript) | Research surfaced that `mlx-swift-examples` has no Whisper reference (issue #146 closed unanswered); the actual reference is `ml-explore/mlx-examples` Python — a port, not a copy-paste. T1.1a derisks the SPM dep + Metal-on-device link in one evening before investing in the multi-day port |
 | 2026-06-10 | T1.1b smoke-test model: `whisper-tiny.en` (not `small.en`) | `small.en` at FP16 likely needs the `increased-memory-limit` entitlement; free-tier sideload provisioning profiles may strip it. `tiny.en` (~75 MB) fits under the default budget. `small.en` stays the T1.2 production target, gated on entitlement-on-free-tier validation |
+| 2026-06-10 | Default model promoted to `whisper-small.en` | After T1.1's tiny.en run succeeded, swapped in small.en (481 MB FP16 safetensors) and re-ran the same smoke. Process did not get killed by jetsam — entitlement empirically *not* required for whisper-small.en on iPhone 15 Pro Max. Accuracy delta on `ls_test.flac`: tiny.en said "goods sold openly, shorted the burden" (nonsense); small.en said "good soul openly shouldered the burden" (the correct phrase). Cost: encoder 60→419 ms, total 491→1772 ms — ~3.6× slower but ~3.4× real-time on a 6 s clip, comfortable for finalize-only UX |
 
 ---
 
