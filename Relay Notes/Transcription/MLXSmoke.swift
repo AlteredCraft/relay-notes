@@ -9,10 +9,11 @@ import MLXRandom
 /// only does useful work on the iPhone 15 Pro Max. T1.1b-4 will replace the
 /// per-section prints with a single end-to-end transcript of the bundled WAV.
 nonisolated enum MLXSmoke {
-    static func run() {
+    static func run() async {
         runMLXHello()
         runWhisperAudio()
         runWhisperModel()
+        await runWhisperTranscribe()
     }
 
     // MARK: - T1.1a — mlx-swift runtime sanity
@@ -93,6 +94,27 @@ nonisolated enum MLXSmoke {
             let encMs = Int(Date().timeIntervalSince(encStart) * 1000)
             print("  audio features shape       = \(features.shape)")
             print("  encoder time               = \(encMs) ms")
+        } catch {
+            print("  ERROR: \(error)")
+        }
+    }
+
+    // MARK: - T1.1b-4 — end-to-end transcript (the T1.1 done-when)
+
+    private static func runWhisperTranscribe() async {
+        print("[MLXSmoke] WhisperMLXTranscriber:")
+        guard let flacURL = Bundle.main.url(forResource: "ls_test", withExtension: "flac") else {
+            print("  ls_test.flac NOT FOUND — skipping transcribe")
+            return
+        }
+        let transcriber = WhisperMLXTranscriber()
+        let options = TranscriptionOptions.whisperMLX(WhisperMLXOptions())
+        do {
+            let start = Date()
+            let transcript = try await transcriber.transcribe(flacURL, options: options)
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            print("  total transcribe time      = \(ms) ms")
+            print("  transcript                 = '\(transcript)'")
         } catch {
             print("  ERROR: \(error)")
         }

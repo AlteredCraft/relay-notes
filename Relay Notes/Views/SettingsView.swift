@@ -110,7 +110,7 @@ struct SettingsView: View {
                     }
                     Button("Run MLX smoke (console)") {
                         Task.detached(priority: .userInitiated) {
-                            MLXSmoke.run()
+                            await MLXSmoke.run()
                         }
                     }
                 } header: {
