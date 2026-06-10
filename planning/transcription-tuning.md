@@ -156,13 +156,13 @@ For `WhisperMLXTranscriber` the streaming/file-based distinction collapses to on
 
 ## Tier 2 — Local ASR via MLX (Whisper)
 
-**Status: planned (T1).** Engine is `WhisperMLXTranscriber`, built on `mlx-swift` (raw — *not* WhisperKit; see "Decisions log" 2026-06-10 for why). First model: `mlx-community/whisper-small.en-mlx` (~250 MB). The dials and defaults below are the *plan* — empirical outcomes get appended once T1 ships.
+**Status: planned (T1).** Engine is `WhisperMLXTranscriber`, built on `mlx-swift` (raw — *not* WhisperKit; see "Decisions log" 2026-06-10 for why). T1.1b smoke-test model: `mlx-community/whisper-tiny.en-mlx` (~75 MB) — chosen to sidestep the `increased-memory-limit` entitlement question on free-tier sideload (see notes.md T1 watch-item). T1.2 production model still targets `mlx-community/whisper-small.en-mlx` (~250 MB), gated on the entitlement-vs-free-tier resolution. The dials and defaults below are the *plan* — empirical outcomes get appended once T1 ships.
 
 ### The dials
 
 | # | Dial | Range / values | Planned default |
 |---|---|---|---|
-| 1 | Model variant | `whisper-small.en` initially; `tiny.en` for low-friction sanity tests | `small.en` |
+| 1 | Model variant | `whisper-tiny.en` for T1.1b smoke; `whisper-small.en` is the T1.2 production target (entitlement-gated) | `tiny.en` (T1.1b) → `small.en` (T1.2, conditional) |
 | 2 | Language | `en` only in the first cut (multilingual deferred until Tier 2 stabilizes) | `en` |
 
 Both are exposed in the Settings sheet under "Transcription engine → On-device (Whisper)" — visible only when Whisper is the selected engine.
@@ -202,6 +202,8 @@ Both are exposed in the Settings sheet under "Transcription engine → On-device
 | 2026-06-10 | Tier 2 first cut: no streaming partials (finalize-only) | Chunked streaming for Whisper is its own design problem; ship the no-partials path first, revisit if dogfood UX demands it |
 | 2026-06-10 | Tier 2 buffer strategy: in-memory PCM during recording | Simpler than a scratch WAV; fine for notes up to ~30 min on iPhone 15 Pro Max. Revisit trigger captured in [#1](https://github.com/AlteredCraft/relay-notes/issues/1) |
 | 2026-06-10 | `TranscriptionOptions` becomes a sum type (`.apple` / `.whisperMLX`) | Two engines with different parameter sets; sum is type-safe with no nullable fields and matches `TranscriptionEngine` selection in `Tunings` |
+| 2026-06-10 | T1.1 split into T1.1a (mlx-swift "hello on device") + T1.1b (Whisper transcript) | Research surfaced that `mlx-swift-examples` has no Whisper reference (issue #146 closed unanswered); the actual reference is `ml-explore/mlx-examples` Python — a port, not a copy-paste. T1.1a derisks the SPM dep + Metal-on-device link in one evening before investing in the multi-day port |
+| 2026-06-10 | T1.1b smoke-test model: `whisper-tiny.en` (not `small.en`) | `small.en` at FP16 likely needs the `increased-memory-limit` entitlement; free-tier sideload provisioning profiles may strip it. `tiny.en` (~75 MB) fits under the default budget. `small.en` stays the T1.2 production target, gated on entitlement-on-free-tier validation |
 
 ---
 

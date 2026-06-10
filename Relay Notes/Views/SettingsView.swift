@@ -108,10 +108,15 @@ struct SettingsView: View {
                     Button("Reset tunings to defaults") {
                         tunings.resetToDefaults()
                     }
+                    Button("Run MLX smoke (console)") {
+                        Task.detached(priority: .userInitiated) {
+                            MLXSmoke.run()
+                        }
+                    }
                 } header: {
                     Text("Debug")
                 } footer: {
-                    Text("Debug-only — excluded from release builds.")
+                    Text("Debug-only — excluded from release builds. MLX smoke must run on the iPhone 15 Pro Max — the iOS Simulator does not support MLX/Metal.")
                 }
                 #endif
             }
