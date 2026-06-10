@@ -11,26 +11,39 @@ final class Tunings {
         static let bitrate = "tunings.bitrate"
         static let preset = "tunings.preset"
         static let contextualStringsText = "tunings.contextualStringsText"
+        static let engine = "tunings.engine"
+        static let whisperModelVariant = "tunings.whisperModelVariant"
     }
 
+    @ObservationIgnored
+    private let defaults: UserDefaults
+
     var sessionMode: AVAudioSession.Mode {
-        didSet { UserDefaults.standard.set(sessionMode.rawValue, forKey: Key.sessionMode) }
+        didSet { defaults.set(sessionMode.rawValue, forKey: Key.sessionMode) }
     }
 
     var bitrate: Int {
-        didSet { UserDefaults.standard.set(bitrate, forKey: Key.bitrate) }
+        didSet { defaults.set(bitrate, forKey: Key.bitrate) }
     }
 
     var preset: SpeechTranscriber.Preset {
-        didSet { UserDefaults.standard.set(Self.presetID(preset), forKey: Key.preset) }
+        didSet { defaults.set(Self.presetID(preset), forKey: Key.preset) }
     }
 
     var contextualStringsText: String {
-        didSet { UserDefaults.standard.set(contextualStringsText, forKey: Key.contextualStringsText) }
+        didSet { defaults.set(contextualStringsText, forKey: Key.contextualStringsText) }
     }
 
-    init() {
-        let defaults = UserDefaults.standard
+    var engine: TranscriptionEngine {
+        didSet { defaults.set(engine.rawValue, forKey: Key.engine) }
+    }
+
+    var whisperModelVariant: WhisperModelVariant {
+        didSet { defaults.set(whisperModelVariant.rawValue, forKey: Key.whisperModelVariant) }
+    }
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
 
         if let modeRaw = defaults.string(forKey: Key.sessionMode) {
             self.sessionMode = AVAudioSession.Mode(rawValue: modeRaw)
@@ -49,6 +62,20 @@ final class Tunings {
         }
 
         self.contextualStringsText = defaults.string(forKey: Key.contextualStringsText) ?? ""
+
+        if let engineRaw = defaults.string(forKey: Key.engine),
+           let restored = TranscriptionEngine(rawValue: engineRaw) {
+            self.engine = restored
+        } else {
+            self.engine = .apple
+        }
+
+        if let variantRaw = defaults.string(forKey: Key.whisperModelVariant),
+           let restored = WhisperModelVariant(rawValue: variantRaw) {
+            self.whisperModelVariant = restored
+        } else {
+            self.whisperModelVariant = .smallEN
+        }
     }
 
     func resetToDefaults() {
@@ -56,6 +83,8 @@ final class Tunings {
         bitrate = 64_000
         preset = .transcription
         contextualStringsText = ""
+        engine = .apple
+        whisperModelVariant = .smallEN
     }
 
     var recordingOptions: RecordingOptions {
@@ -67,11 +96,16 @@ final class Tunings {
     }
 
     var transcriptionOptions: TranscriptionOptions {
-        let strings = contextualStringsText
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        return TranscriptionOptions(preset: preset, contextualStrings: strings)
+        switch engine {
+        case .apple:
+            let strings = contextualStringsText
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            return .apple(AppleSpeechOptions(preset: preset, contextualStrings: strings))
+        case .whisperMLX:
+            return .whisperMLX(WhisperMLXOptions(modelVariant: whisperModelVariant, language: "en"))
+        }
     }
 
     private static func presetID(_ preset: SpeechTranscriber.Preset) -> String {

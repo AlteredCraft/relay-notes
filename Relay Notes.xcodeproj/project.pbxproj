@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		0AA641161B4B07CA3819EDF5 /* RecorderInterruptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B492830A62977826130AD2F /* RecorderInterruptionTests.swift */; };
+		1E8AB0F00AD411F4CE431D8F /* TuningsPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9226CAD6B46AB3A7639A3AD /* TuningsPersistenceTests.swift */; };
+		393935093896FD76BCBAD63E /* TranscriberFactoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45DC85D4B123F5A6BF195D86 /* TranscriberFactoryTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -29,7 +31,9 @@
 		22ED2C9C2FD77D6A0066B2EC /* transcription-tuning.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "transcription-tuning.md"; sourceTree = "<group>"; };
 		22ED2C9D2FD783740066B2EC /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CLAUDE.md; sourceTree = "<group>"; };
 		22ED2CA02FD78F8C0066B2EC /* CHANGE_LOG.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CHANGE_LOG.md; sourceTree = "<group>"; };
+		45DC85D4B123F5A6BF195D86 /* TranscriberFactoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TranscriberFactoryTests.swift; path = "Relay NotesTests/TranscriberFactoryTests.swift"; sourceTree = "<group>"; };
 		B4307D11F9D6B95E232E9FBF /* Relay NotesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Relay NotesTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F9226CAD6B46AB3A7639A3AD /* TuningsPersistenceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TuningsPersistenceTests.swift; path = "Relay NotesTests/TuningsPersistenceTests.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -107,6 +111,8 @@
 			isa = PBXGroup;
 			children = (
 				0B492830A62977826130AD2F /* RecorderInterruptionTests.swift */,
+				F9226CAD6B46AB3A7639A3AD /* TuningsPersistenceTests.swift */,
+				45DC85D4B123F5A6BF195D86 /* TranscriberFactoryTests.swift */,
 			);
 			name = "Relay NotesTests";
 			sourceTree = SOURCE_ROOT;
@@ -217,6 +223,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				0AA641161B4B07CA3819EDF5 /* RecorderInterruptionTests.swift in Sources */,
+				1E8AB0F00AD411F4CE431D8F /* TuningsPersistenceTests.swift in Sources */,
+				393935093896FD76BCBAD63E /* TranscriberFactoryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

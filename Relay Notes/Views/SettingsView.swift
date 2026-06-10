@@ -27,6 +27,37 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
+                    Button {
+                        tunings.engine = .apple
+                    } label: {
+                        HStack {
+                            Text("Apple Speech")
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if tunings.engine == .apple {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.tint)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    HStack {
+                        Text("On-device (Whisper)")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("Coming next")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Transcription engine")
+                } footer: {
+                    Text("Apple Speech runs on-device with no model choice. On-device (Whisper) arrives in a follow-up — it'll let you swap in third-party local models via MLX.")
+                }
+
+                Section {
                     Picker("Mode", selection: $tunings.sessionMode) {
                         ForEach(modes, id: \.value) { mode in
                             Text(mode.label).tag(mode.value)

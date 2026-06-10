@@ -19,7 +19,7 @@ final class RecorderViewModel {
     let tunings: Tunings
 
     private let engine: LiveAudioEngine
-    private let transcriber: any Transcriber
+    private let transcriberFactory: TranscriberFactory
     private let modelContext: ModelContext
 
     private var session: (any TranscriptionSession)?
@@ -30,18 +30,19 @@ final class RecorderViewModel {
 
     init(
         engine: LiveAudioEngine,
-        transcriber: any Transcriber,
+        transcriberFactory: TranscriberFactory,
         modelContext: ModelContext,
         tunings: Tunings
     ) {
         self.engine = engine
-        self.transcriber = transcriber
+        self.transcriberFactory = transcriberFactory
         self.modelContext = modelContext
         self.tunings = tunings
     }
 
     func startRecording() async {
         do {
+            let transcriber = transcriberFactory.transcriber(for: tunings.engine)
             let session = try await transcriber.makeStreamingSession(options: tunings.transcriptionOptions)
             self.session = session
 
@@ -83,6 +84,9 @@ final class RecorderViewModel {
         } catch TranscriptionError.localeNotSupported {
             await cleanupAfterFailure()
             state = .failed(message: "Your current language isn't supported for on-device transcription.")
+        } catch let TranscriptionError.engineNotImplemented(message) {
+            await cleanupAfterFailure()
+            state = .failed(message: message)
         } catch {
             await cleanupAfterFailure()
             state = .failed(message: "Couldn't start recording. Please try again.")

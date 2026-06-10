@@ -10,6 +10,10 @@ nonisolated final class AppleSpeechTranscriber: Transcriber {
     }
 
     func transcribe(_ audio: URL, options: TranscriptionOptions) async throws -> String {
+        guard case .apple(let appleOptions) = options else {
+            preconditionFailure("AppleSpeechTranscriber received non-apple options — factory and engine selection are out of sync")
+        }
+
         let authStatus = await Self.requestSpeechAuthorization()
         guard authStatus == .authorized else {
             throw TranscriptionError.notAuthorized
@@ -19,7 +23,7 @@ nonisolated final class AppleSpeechTranscriber: Transcriber {
             throw TranscriptionError.localeNotSupported(locale)
         }
 
-        let transcriber = SpeechTranscriber(locale: supportedLocale, preset: options.preset)
+        let transcriber = SpeechTranscriber(locale: supportedLocale, preset: appleOptions.preset)
 
         do {
             if let installation = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
@@ -38,9 +42,9 @@ nonisolated final class AppleSpeechTranscriber: Transcriber {
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
 
-        if !options.contextualStrings.isEmpty {
+        if !appleOptions.contextualStrings.isEmpty {
             let context = AnalysisContext()
-            context.contextualStrings = [.general: options.contextualStrings]
+            context.contextualStrings = [.general: appleOptions.contextualStrings]
             try? await analyzer.setContext(context)
         }
 
@@ -76,6 +80,10 @@ nonisolated final class AppleSpeechTranscriber: Transcriber {
     }
 
     func makeStreamingSession(options: TranscriptionOptions) async throws -> any TranscriptionSession {
+        guard case .apple(let appleOptions) = options else {
+            preconditionFailure("AppleSpeechTranscriber received non-apple options — factory and engine selection are out of sync")
+        }
+
         let authStatus = await Self.requestSpeechAuthorization()
         guard authStatus == .authorized else {
             throw TranscriptionError.notAuthorized
@@ -87,9 +95,9 @@ nonisolated final class AppleSpeechTranscriber: Transcriber {
 
         let transcriber = SpeechTranscriber(
             locale: supportedLocale,
-            transcriptionOptions: options.preset.transcriptionOptions,
-            reportingOptions: options.preset.reportingOptions.union([.volatileResults]),
-            attributeOptions: options.preset.attributeOptions
+            transcriptionOptions: appleOptions.preset.transcriptionOptions,
+            reportingOptions: appleOptions.preset.reportingOptions.union([.volatileResults]),
+            attributeOptions: appleOptions.preset.attributeOptions
         )
 
         do {
@@ -104,9 +112,9 @@ nonisolated final class AppleSpeechTranscriber: Transcriber {
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
 
-        if !options.contextualStrings.isEmpty {
+        if !appleOptions.contextualStrings.isEmpty {
             let context = AnalysisContext()
-            context.contextualStrings = [.general: options.contextualStrings]
+            context.contextualStrings = [.general: appleOptions.contextualStrings]
             try? await analyzer.setContext(context)
         }
 

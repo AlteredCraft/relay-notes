@@ -1,7 +1,7 @@
 ---
 title: Relay Notes - Voice-to-Text iOS Build Plan
 date: 2026-06-07
-updated: 2026-06-08
+updated: 2026-06-10
 tags:
   - altered-craft
   - product
@@ -137,8 +137,8 @@ Add the **Increased Memory Limit** entitlement. Even with it, 8 GB is tight, so 
 | Tier | Provider | Where it runs | Model choice | When |
 |---|---|---|---|---|
 | **1** | Apple Speech (`SpeechAnalyzer`) | on-device | none — Apple's models | v1 |
-| **2** | Local ASR — Whisper / Qwen3-ASR via MLX or whisper.cpp | on-device | your choice (HF repo id) | post-v1, when Apple's accuracy is the bottleneck *and* staying local matters |
-| **3** | Cloud STT — Cohere / Gemini | cloud (opt-in) | provider's hosted | post-v1, **off by default**; user explicitly enables |
+| **2** | Local ASR via MLX — Whisper first; Parakeet-MLX / Qwen3-ASR as follow-ups | on-device | your choice (HF repo id) | **T1** (next) — promoted ahead of L stages on 2026-06-10 to prove on-device viability of third-party models before LLM work |
+| **3** | Cloud STT — Cohere / Gemini | cloud (opt-in) | provider's hosted | post-T1, **off by default**; user explicitly enables |
 
 ### Cleanup / categorize tiers
 
@@ -178,9 +178,28 @@ Sequenced for ~12 hrs/week, iPhone-first.
 - [ ] **V1.4 — TestFlight (optional, gated).** Enroll in the Apple Developer Program ($99/yr) and ship a TestFlight build. Deferred until after **L1** — validating that on-device MLX inference actually works on the phone is the trigger for committing to the paid program. Earlier signals that would also pull this forward: wanting to hand the app to someone else, or the 7-day re-plug cycle becoming friction.
   *Done when: build is on TestFlight, installed via the TestFlight app, no need to re-plug to a Mac for weeks.*
 
+### Transcription upgrades (ahead of L stages)
+
+Originally treated as "post-v1, when Apple's accuracy is the bottleneck *and* staying local matters." Promoted ahead of L1 on 2026-06-10: third-party-model on-device viability is the riskiest unknown of the local-first thesis, and the runtime we wire here (raw `mlx-swift`) is the same one L1+ will need for local LLMs. Doing the hard things first.
+
+  *Done when: at least one third-party local transcription model produces real notes on your phone, with Apple Speech still selectable as a runtime alternative.*
+- [ ] **T1 — Local Whisper via MLX.** Wire `mlx-swift` (plus `mlx-swift-examples` as the Whisper reference), download `mlx-community/whisper-small.en-mlx` (~250 MB) into Application Support on first use, decode at recording finalize. New `WhisperMLXTranscriber` conforms to the existing `Transcriber` protocol; `TranscriptionEngine` enum + `TranscriberFactory` resolves the engine per recording. Settings grows an engine picker with engine-conditional sub-controls and a pre-download / delete affordance for the model (preserves the offline-recording promise once installed). `TranscriptionOptions` becomes a sum type (`.apple` / `.whisperMLX`) to keep per-engine options type-safe without nullable fields. First cut is finalize-only — recorder shows "Transcript will appear when you stop recording" placeholder during Whisper recording; chunked streaming partials are out of scope until T1 is dogfooded. **Picked raw `mlx-swift` over WhisperKit** to keep the app to a single ML runtime (avoiding a Core ML + MLX split when L1 lands) and to validate MLX-on-iOS on a smaller problem than an LLM. Escape valve: drop to WhisperKit behind the same `Transcriber` protocol if `mlx-swift` proves intractable on iOS — the provider plumbing isn't wasted.
+  *Done when: with "On-device (Whisper)" selected in Settings, tap → record → stop produces a non-empty transcript on the iPhone 15 Pro Max, and "Apple Speech" still works unchanged.*
+  - [x] **T1.0 — Provider plumbing (no Whisper yet).** Refactored `TranscriptionOptions` to a sum type (`.apple(AppleSpeechOptions)` / `.whisperMLX(WhisperMLXOptions)`); added `TranscriptionEngine` + `WhisperModelVariant` enums; `Tunings` gained `engine` and `whisperModelVariant` (UserDefaults-backed, default `.apple` / `.smallEN`, snapshot-read at recording start) and an injectable `UserDefaults` parameter for tests; new `TranscriberFactory` (`@MainActor`, caches instances) resolves engine → concrete `Transcriber`; `RecorderViewModel` takes the factory and resolves per recording; `ContentView.task` swaps the direct `AppleSpeechTranscriber()` for the factory. Settings sheet gains a "Transcription engine" section — Apple Speech selectable, Whisper visible with a "Coming next" tag. `WhisperMLXTranscriber` stub throws `TranscriptionError.engineNotImplemented` (new error case, surfaced to user in `RecorderViewModel.startRecording`). 10 new tests (5 `TuningsPersistenceTests` + 4 `TranscriberFactoryTests`) added via the `xcodeproj` Ruby gem; validated on a `/tmp` repo copy before applying to the real project. All 15 tests green. *(2026-06-10)*
+    *Done when: build is clean, Apple Speech still works identically, picker is visible with Whisper disabled.* ✅
+  - [ ] **T1.1 — Whisper inference proven in isolation.** Add `mlx-swift` Swift Package dep (and `mlx-swift-examples` as Whisper reference). Implement `WhisperMLXTranscriber.transcribe(_:options:)` (file-based path) end-to-end: load `mlx-community/whisper-small.en-mlx` weights from a hand-staged path (simulator container or dev-bundled), compute log-mel, run encoder + greedy decoder, return string. Driven only by a `#if DEBUG` "Whisper smoke" button in the existing debug section of the Tuning sheet — *not* wired into the recorder yet. Validated on the iPhone 15 Pro Max, not just simulator (MLX/Metal differs).
+    *Done when: tap the debug button on the phone, get a non-empty transcript of a known short clip from `WhisperMLXTranscriber`.*
+  - [ ] **T1.2 — Whisper wired into the recorder flow.** Model download manager (URLSession-backed → Application Support, excluded from iCloud backup, progress + cancel + integrity check). Settings gains the pre-download / delete affordance and the engine picker activates the "On-device (Whisper)" option. `WhisperMLXTranscriber.makeStreamingSession` accumulates PCM in memory during `feed` and decodes once at `finish()` (no partials). `RecorderView` shows the "Transcript will appear when you stop recording" placeholder + elapsed time + level meter while Whisper is selected; `.finalizing` shows a "Transcribing…" spinner. Recording is blocked with a clear, actionable message if Whisper is selected but the model isn't downloaded.
+    *Done when: pick Whisper → download → record → stop → transcript saved to a `Note`, Apple Speech still selectable and working.*
+  - [ ] **T1.3 — Validation + measurements + decisions log.** On-device smoke test (checked-in ~5 s WAV in `Relay NotesTests/Fixtures/`, asserts a substring of expected text). Unit tests for `WhisperMLXTranscriber` streaming session (0 partials, exactly 1 final on `finish()`). Measure on iPhone 15 Pro Max for a 1-min and a 5-min note: model load time, decode time, peak resident memory, battery delta. Append measurements to a new "T1 measurements" subsection in this doc (sibling to V1.1 accuracy tuning) and to `transcription-tuning.md`'s Decisions log. Revisit defaults if numbers demand it (e.g. swap to `tiny.en` if `small.en` is too slow).
+    *Done when: tests green, measurements captured, defaults revisited if needed.*
+- [ ] **T2 — Second on-device engine.** Add Parakeet-MLX (NVIDIA, CC-BY-4.0) or Qwen3-ASR via MLX as a second `LocalASR` impl behind the same protocol. Validates the runtime-extensibility claim of the abstraction and gives a real accuracy comparison ladder. Pick the engine based on which has the most usable iOS port at the time. Heavier than Whisper-small (Parakeet is 0.6B params / ~2 GB RAM) — likely needs the Increased Memory Limit entitlement (L1's prerequisite anyway).
+  *Done when: a second on-device engine is selectable in Settings and produces transcripts on the phone.*
+- [ ] **T3 — Cloud STT (`CloudTranscriber`).** Cohere as the accuracy primary, Gemini for diarization-heavy clips. **Off by default.** Explicit opt-in with a one-time disclosure of what data leaves the device and where it goes.
+  *Done when: with the cloud toggle on, a transcript comes back from a remote provider; with it off, no network call leaves the device.*
+
 ### Later — LLM enrichment (deferred until v1 is in daily use)
 
-- [ ] **L0 — Validation.** Desktop. Run candidate local models (Qwen3 4B and friends, via Ollama or MLX) against 20-30 real captured notes. Lock the prompt and taxonomy. Pick the local cleanup model. Sanity-check the ceiling with a cloud frontier model.
   *Done when: you trust a local model on your own notes.*
 - [ ] **L1 — Inference spike.** Wire `LocalLLMClient` or `mlx-swift`, download a model from HF, generate on the 15 Pro Max. Add the Increased Memory Limit entitlement. Measure tok/sec, load time, memory, battery.
   *Done when: a downloaded model streams text on your phone. Riskiest integration, prove it first when L stages resume.*
@@ -228,7 +247,7 @@ Notes:
 ### v1
 - **Local-first by default; cloud is opt-in.** The app must be fully functional with no network. Cloud STT exists as an upgrade path users explicitly enable; it never runs implicitly.
 - **On-device ≠ Apple-only.** v1 uses `AppleSpeechTranscriber` because it ships with iOS, but `LocalASR` (Whisper / Qwen3-ASR via MLX) is also on-device and slots in behind the same protocol when Apple's accuracy is the limit.
-- **Provider abstraction from day one.** `Transcriber` protocol with three concrete providers (`AppleSpeechTranscriber`, `LocalASR`, `CloudTranscriber`). Options struct (`TranscriptionOptions`) keeps the per-call config runtime-tunable.
+- **Provider abstraction from day one.** `Transcriber` protocol with concrete providers (`AppleSpeechTranscriber` today; `WhisperMLXTranscriber` planned for T1; `CloudTranscriber` planned for T3). `TranscriptionEngine` enum + `TranscriberFactory` will resolve the engine per recording in T1; `TranscriptionOptions` becomes a sum type (`.apple` / `.whisperMLX`) at the same time, so per-engine options stay type-safe without nullable fields.
 - **Transcription off the main thread.** Recording (`AVAudioRecorder`) and transcription (`SpeechAnalyzer` actor) both run async; the view never blocks. V1.1 is file-based — live streaming partial results into the view is a V1.2 stretch.
 - **Local-first persistence.** SwiftData for transcripts. Audio files in the app container, referenced by filename (not absolute URL, since the container path can shift between launches).
 
@@ -248,6 +267,11 @@ Notes:
 > - **Apple Speech setup.** Request on-device recognition explicitly, handle locale and authorization. Permissions: `NSMicrophoneUsageDescription`, `NSSpeechRecognitionUsageDescription`. Configure the audio session for recording.
 > - **Background recording.** ~~If you want capture while the screen is locked, you need the background audio mode and a long-lived audio session — easy to get wrong.~~ **Addressed 2026-06-09** (see `CHANGE_LOG.md`): `audio` background mode declared via partial `Relay Notes/Info.plist`; session already long-lived. `AVAudioSession` interruption handling (call/alarm/Siri mid-record → pause + auto-resume) also shipped 2026-06-09. Still open: audio route changes (e.g. unplugging headphones) and on-device validation of the backgrounded-during-a-call path.
 > - **Single-platform lock-in.** Revisiting cross-platform later means a rebuild. This is the conscious tradeoff for shipping the best thing on your phone now.
+
+> [!warning] T1 risks (Local Whisper via MLX)
+> - **Choosing raw `mlx-swift` is the spike.** WhisperKit would get a transcript faster, but it uses Core ML under the hood — picking it would give the app two ML runtimes the moment L1 lands. Going with `mlx-swift` pays the MLX learning cost now, on a smaller problem (Whisper inference) than an LLM. Risk: iOS memory limits, Metal backing, and the absence of a turnkey Whisper-on-iOS sample could burn substantial time. **Escape valve:** if no working transcript on-device after ~2 weeks of evening effort, fall back to WhisperKit behind the same `Transcriber` protocol — the provider plumbing isn't wasted.
+> - **In-memory PCM buffer ceiling.** First-cut `WhisperMLXTranscriber.makeStreamingSession` accumulates PCM in memory and decodes once at `finish()`. ~115 MB for a 30-min recording on the iPhone 15 Pro Max — fine, but not unbounded. Trigger to revisit: recordings >20 min, memory-pressure warnings under dogfood, or expanding the device target. Tracked in [#1](https://github.com/AlteredCraft/relay-notes/issues/1).
+> - **Model download is a 250 MB step.** `mlx-community/whisper-small.en-mlx` lives in Application Support (not Caches — Caches can be evicted under storage pressure), excluded from iCloud backup. Settings exposes pre-download and delete affordances to preserve the offline-recording promise once installed.
 
 > [!warning] Later risks (LLM enrichment, when it resumes)
 > - **iOS memory limits.** Even with the Increased Memory Limit entitlement, 8 GB is tight. 3B to 4B Q4 is the ceiling. Test for jetsam kills under real use.

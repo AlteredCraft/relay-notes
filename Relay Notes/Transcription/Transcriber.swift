@@ -2,9 +2,19 @@ import AVFoundation
 import Foundation
 import Speech
 
-struct TranscriptionOptions: Sendable {
+enum TranscriptionOptions: Sendable {
+    case apple(AppleSpeechOptions)
+    case whisperMLX(WhisperMLXOptions)
+}
+
+struct AppleSpeechOptions: Sendable {
     var preset: SpeechTranscriber.Preset = .transcription
     var contextualStrings: [String] = []
+}
+
+struct WhisperMLXOptions: Sendable {
+    var modelVariant: WhisperModelVariant = .smallEN
+    var language: String = "en"
 }
 
 protocol TranscriptionSession: Sendable, AnyObject {
@@ -26,5 +36,6 @@ enum TranscriptionError: Error {
     case assetInstallationFailed(any Error)
     case audioOpenFailed(any Error)
     case noSpeechDetected
+    case engineNotImplemented(String)
     case underlying(any Error)
 }

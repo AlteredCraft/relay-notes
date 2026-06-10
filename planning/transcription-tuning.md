@@ -1,7 +1,7 @@
 ---
 title: Relay Notes - Transcription Tuning
 date: 2026-06-08
-updated: 2026-06-08
+updated: 2026-06-10
 tags:
   - altered-craft
   - voice
@@ -19,7 +19,7 @@ created_by: build-log
 Companion to [notes.md](./notes.md). Tracks every knob that affects transcription accuracy and live UX, what each one does, what we picked, and why. Updated as we test on real audio.
 
 > [!info] Scope
-> v1 uses Apple's on-device `SpeechTranscriber` (via `SpeechAnalyzer`). When Local ASR (Whisper / Qwen3-ASR via MLX) and Cloud STT (Cohere / Gemini) come online, each provider gets its own section here.
+> v1 uses Apple's on-device `SpeechTranscriber` (via `SpeechAnalyzer`) — Tier 1 below. Tier 2 (Local ASR via MLX, Whisper first) is **next up as T1** in [notes.md § Transcription upgrades](./notes.md#transcription-upgrades-ahead-of-l-stages). Tier 3 (Cloud STT, Cohere / Gemini) follows. Each provider gets its own section here as it comes online.
 
 ---
 
@@ -134,7 +134,7 @@ SpeechTranscriber(
 
 ## Streaming vs file-based: should we expect different accuracy?
 
-Two transcription paths share one `AppleSpeechTranscriber`:
+This section is about **Tier 1 (Apple Speech)** — where two transcription paths share one `AppleSpeechTranscriber`:
 
 1. **Streaming** (`makeStreamingSession`) — used by the recorder. PCM buffers fed live into `SpeechAnalyzer.start(inputSequence:)` while recording.
 2. **File-based** (`transcribe(_:options:)`) — used by nothing in the app right now. Reserved for the future cloud STT path and for re-transcribing existing notes.
@@ -148,6 +148,43 @@ Two transcription paths share one `AppleSpeechTranscriber`:
 
 **Mitigation.** Storage of the audio file is identical in both paths — same AAC m4a written by `LiveAudioEngine`. So we can always re-transcribe a stored note via the file-based path later if we suspect the streaming pass mis-transcribed something. Worth building a "re-transcribe" debug action if we start seeing divergence in real use.
 
+### Tier 2 (Whisper) — different shape
+
+For `WhisperMLXTranscriber` the streaming/file-based distinction collapses to one path: buffers fed via `feed(_:)` accumulate in memory until `finish()`, at which point a single file-style decode runs over the whole recording. There's no concept of volatile-then-final because there are no intermediate emits. Net: Tier 2 is "file-based-pretending-to-be-streaming" for protocol-shape compatibility. The protocol's `transcribe(_:options:)` file-based method can also be implemented to decode an existing audio URL directly — useful if we later want a "re-transcribe with Whisper" debug action against notes captured under Apple Speech.
+
+---
+
+## Tier 2 — Local ASR via MLX (Whisper)
+
+**Status: planned (T1).** Engine is `WhisperMLXTranscriber`, built on `mlx-swift` (raw — *not* WhisperKit; see "Decisions log" 2026-06-10 for why). First model: `mlx-community/whisper-small.en-mlx` (~250 MB). The dials and defaults below are the *plan* — empirical outcomes get appended once T1 ships.
+
+### The dials
+
+| # | Dial | Range / values | Planned default |
+|---|---|---|---|
+| 1 | Model variant | `whisper-small.en` initially; `tiny.en` for low-friction sanity tests | `small.en` |
+| 2 | Language | `en` only in the first cut (multilingual deferred until Tier 2 stabilizes) | `en` |
+
+Both are exposed in the Settings sheet under "Transcription engine → On-device (Whisper)" — visible only when Whisper is the selected engine.
+
+### Hidden defaults
+
+- **In-memory PCM buffer during `feed`, decode once at `finish()`.** Notes up to ~30 min on the iPhone 15 Pro Max use roughly 115 MB of resident PCM — comfortable on 8 GB. Bound is real, just not load-bearing for v1-style notes. Revisit trigger and alternative buffer strategies tracked in [#1](https://github.com/AlteredCraft/relay-notes/issues/1).
+- **Greedy decoding (beam size 1) for the first cut.** Beam search costs latency for a small accuracy bump; not worth the complexity until we have on-device numbers to anchor the tradeoff.
+- **No streaming partials in the first cut.** The `TranscriptionSession.updates` stream returned by `WhisperMLXTranscriber.makeStreamingSession` emits zero values during `feed` and exactly one final value on `finish()`. Chunked streaming partials are a follow-up, gated on the in-memory bound becoming a real problem (issue #1) or the no-partials UX feeling bad in dogfood.
+
+### Recording UX while Whisper is the selected engine
+
+- The live partial transcript card is **replaced** by a placeholder: "Transcript will appear when you stop recording." + elapsed-time label + audio level meter.
+- After the user stops, the existing `.finalizing` state runs the full-file decode. UI shows a spinner with "Transcribing…" — no progress percentage (Whisper doesn't expose one cleanly without chunking).
+
+### Model lifecycle
+
+- Stored in **Application Support**, not Caches (Caches can be evicted under storage pressure, and a 250 MB redownload from a coffee shop is bad). Excluded from iCloud backup.
+- Pre-download supported from the Settings sheet — preserves the offline-recording promise once installed: zero network calls during a recording session.
+- Delete affordance also in Settings, in case the user wants the space back.
+- Recording is blocked with a clear message if Whisper is selected but the model isn't downloaded.
+
 ---
 
 ## Decisions log
@@ -160,6 +197,11 @@ Two transcription paths share one `AppleSpeechTranscriber`:
 | 2026-06-08 | Streaming session unions `.volatileResults` into user's preset | Get live partials without dragging in `fastResults` (which would reduce accuracy) |
 | 2026-06-08 | `AVAudioConverter` left at default quality | Default works; revisit if we see streaming-only accuracy regressions |
 | 2026-06-08 | Contextual biasing: empty default | Effect on `SpeechTranscriber` (vs `DictationTranscriber`) is undocumented and untested. Off until we have a test corpus |
+| 2026-06-10 | Tier 2 engine: raw `mlx-swift`, not WhisperKit | Keeps the app to one ML runtime (avoiding Core ML + MLX when L1 lands); pays the MLX-on-iOS learning cost on a smaller problem than an LLM; transferable to Parakeet-MLX / Qwen3-ASR follow-ups. Escape valve to WhisperKit behind the same protocol if intractable on iOS |
+| 2026-06-10 | Tier 2 default model: `whisper-small.en` | ~250 MB, English-only, good accuracy/footprint balance. `tiny.en` available for low-friction sanity tests |
+| 2026-06-10 | Tier 2 first cut: no streaming partials (finalize-only) | Chunked streaming for Whisper is its own design problem; ship the no-partials path first, revisit if dogfood UX demands it |
+| 2026-06-10 | Tier 2 buffer strategy: in-memory PCM during recording | Simpler than a scratch WAV; fine for notes up to ~30 min on iPhone 15 Pro Max. Revisit trigger captured in [#1](https://github.com/AlteredCraft/relay-notes/issues/1) |
+| 2026-06-10 | `TranscriptionOptions` becomes a sum type (`.apple` / `.whisperMLX`) | Two engines with different parameter sets; sum is type-safe with no nullable fields and matches `TranscriptionEngine` selection in `Tunings` |
 
 ---
 
