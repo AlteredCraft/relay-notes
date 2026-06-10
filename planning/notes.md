@@ -246,7 +246,7 @@ Notes:
 
 > [!warning] v1 risks (voice-to-text)
 > - **Apple Speech setup.** Request on-device recognition explicitly, handle locale and authorization. Permissions: `NSMicrophoneUsageDescription`, `NSSpeechRecognitionUsageDescription`. Configure the audio session for recording.
-> - **Background recording.** If you want capture while the screen is locked, you need the background audio mode and a long-lived audio session — easy to get wrong.
+> - **Background recording.** ~~If you want capture while the screen is locked, you need the background audio mode and a long-lived audio session — easy to get wrong.~~ **Addressed 2026-06-09** (see `CHANGE_LOG.md`): `audio` background mode declared via partial `Relay Notes/Info.plist`; session already long-lived. Still open: `AVAudioSession` interruption handling.
 > - **Single-platform lock-in.** Revisiting cross-platform later means a rebuild. This is the conscious tradeoff for shipping the best thing on your phone now.
 
 > [!warning] Later risks (LLM enrichment, when it resumes)

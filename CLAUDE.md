@@ -34,6 +34,10 @@ When to *not* write to the change log: short conversations, exploratory question
 - `planning/` — design docs (folder reference in Xcode, not a target member).
 - `CHANGE_LOG.md` — running ship narrative at the repo root.
 
+### Info.plist is a hand-maintained *partial* — don't delete it
+
+`Relay Notes/Info.plist` holds only keys Xcode can't auto-generate (currently `UIBackgroundModes = [audio]`, which makes locked-screen recording work — see `CHANGE_LOG.md` 2026-06-09). The build keeps `GENERATE_INFOPLIST_FILE = YES` *and* points `INFOPLIST_FILE` at this file; Xcode merges the generated keys (usage strings, orientations, etc.) on top of it. Two gotchas: (1) `INFOPLIST_KEY_UIBackgroundModes` is a no-op — that key isn't in Xcode's generatable allowlist, hence the file. (2) The target uses a file-system-synchronized group, so the file is excluded from Copy Bundle Resources via a `PBXFileSystemSynchronizedBuildFileExceptionSet` in the pbxproj — without that exception you get "Multiple commands produce Info.plist". Add new non-generatable plist keys here, not via `INFOPLIST_KEY_*`.
+
 ## Build & validate
 
 Use the `xcode-tools` MCP server (see global CLAUDE.md). Order of preference for verifying work:

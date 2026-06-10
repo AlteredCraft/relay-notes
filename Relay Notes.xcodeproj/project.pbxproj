@@ -19,10 +19,23 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		22C5F47B2FD71A7D00FC840C /* Relay Notes */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				22C5F4A02FD71A7E00FC840C /* Exceptions for "Relay Notes" folder in "Relay Notes" target */,
+			);
 			path = "Relay Notes";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		22C5F4A02FD71A7E00FC840C /* Exceptions for "Relay Notes" folder in "Relay Notes" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 22C5F4782FD71A7D00FC840C /* Relay Notes */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		22C5F4762FD71A7D00FC840C /* Frameworks */ = {
@@ -274,6 +287,7 @@
 				DEVELOPMENT_TEAM = 5JAU42ATTD;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Relay Notes/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Relay Notes";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Relay Notes uses your microphone to record voice notes.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Relay Notes uses speech recognition to transcribe your voice notes on-device.";
@@ -309,6 +323,7 @@
 				DEVELOPMENT_TEAM = 5JAU42ATTD;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Relay Notes/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Relay Notes";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Relay Notes uses your microphone to record voice notes.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Relay Notes uses speech recognition to transcribe your voice notes on-device.";
