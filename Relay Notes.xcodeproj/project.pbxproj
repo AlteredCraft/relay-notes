@@ -11,6 +11,7 @@
 		1E8AB0F00AD411F4CE431D8F /* TuningsPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9226CAD6B46AB3A7639A3AD /* TuningsPersistenceTests.swift */; };
 		393935093896FD76BCBAD63E /* TranscriberFactoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45DC85D4B123F5A6BF195D86 /* TranscriberFactoryTests.swift */; };
 		3A915B1B30D397D70C4BF313 /* WhisperAudioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4617E8E14F9328CDED48CE87 /* WhisperAudioTests.swift */; };
+		7E4A71A9547C67CF09759219 /* WhisperTokenizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 941ECE5486B3F396081D7DDC /* WhisperTokenizerTests.swift */; };
 		973F46D10FF15784BEAD20F6 /* MLXRandom in Frameworks */ = {isa = PBXBuildFile; productRef = B1D487B9F07A0DB95BD79522 /* MLXRandom */; };
 		9C8B28FADF29E62CC1D52D00 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = 9A2C4347C3F5928735C6784F /* MLXNN */; };
 		B8034ECE7DE0AB51905F0833 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = A6C34CFD99CF390A32455653 /* MLX */; };
@@ -37,6 +38,7 @@
 		22ED2CA02FD78F8C0066B2EC /* CHANGE_LOG.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CHANGE_LOG.md; sourceTree = "<group>"; };
 		45DC85D4B123F5A6BF195D86 /* TranscriberFactoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TranscriberFactoryTests.swift; path = "Relay NotesTests/TranscriberFactoryTests.swift"; sourceTree = "<group>"; };
 		4617E8E14F9328CDED48CE87 /* WhisperAudioTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperAudioTests.swift; path = "Relay NotesTests/WhisperAudioTests.swift"; sourceTree = "<group>"; };
+		941ECE5486B3F396081D7DDC /* WhisperTokenizerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperTokenizerTests.swift; path = "Relay NotesTests/WhisperTokenizerTests.swift"; sourceTree = "<group>"; };
 		B4307D11F9D6B95E232E9FBF /* Relay NotesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Relay NotesTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F9226CAD6B46AB3A7639A3AD /* TuningsPersistenceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TuningsPersistenceTests.swift; path = "Relay NotesTests/TuningsPersistenceTests.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -122,6 +124,7 @@
 				F9226CAD6B46AB3A7639A3AD /* TuningsPersistenceTests.swift */,
 				45DC85D4B123F5A6BF195D86 /* TranscriberFactoryTests.swift */,
 				4617E8E14F9328CDED48CE87 /* WhisperAudioTests.swift */,
+				941ECE5486B3F396081D7DDC /* WhisperTokenizerTests.swift */,
 			);
 			name = "Relay NotesTests";
 			sourceTree = SOURCE_ROOT;
@@ -243,6 +246,7 @@
 				1E8AB0F00AD411F4CE431D8F /* TuningsPersistenceTests.swift in Sources */,
 				393935093896FD76BCBAD63E /* TranscriberFactoryTests.swift in Sources */,
 				3A915B1B30D397D70C4BF313 /* WhisperAudioTests.swift in Sources */,
+				7E4A71A9547C67CF09759219 /* WhisperTokenizerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
