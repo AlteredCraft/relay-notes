@@ -54,13 +54,49 @@ For T1.1b/T1.2 dev work, Whisper's small assets live in `Relay Notes/Relay Notes
 
 ## Build & validate
 
-Use the `xcode-tools` MCP server (see global CLAUDE.md). Order of preference for verifying work:
+Development happens in Claude Code (terminal), not Xcode's built-in assistant (retired 2026-06-11 — too inefficient). Keep Xcode **open in the background**: the MCP bridge below connects to a *running* Xcode instance, and signing / previews / Instruments still live there. Everything else — editing, builds, simulator tests, `.xcodeproj` mutation, git — runs from the terminal.
+
+### The `xcode-tools` MCP server is Apple's `mcpbridge`
+
+`xcode-tools` is Apple's official Xcode MCP server, shipped inside Xcode 26.5 as `xcrun mcpbridge` (a stdio JSON-RPC bridge to the running Xcode's tool service; auto-detects the Xcode process, errors out if none is running). If its tools aren't available in a session, register it at project scope and restart the session:
+
+```sh
+claude mcp add --scope project xcode-tools -- xcrun mcpbridge
+```
+
+Order of preference for verifying work:
 
 1. `XcodeRefreshCodeIssuesInFile` — fast per-file diagnostics. Run after every edit.
 2. `BuildProject` — full build. Run before claiming a multi-file change works.
-3. **Tests:** the `Relay NotesTests` target uses the Swift `Testing` framework (`import Testing`, `@Test`/`#expect`), hosted in the app (`@testable import Relay_Notes`). Run with: `xcodebuild test -project "Relay Notes.xcodeproj" -scheme "Relay Notes" -destination 'platform=iOS Simulator,name=iPhone 17 Pro'`. Coverage is currently thin (just the recorder interruption state-transition logic) — grow it as logic accrues. UI tests (XCUIAutomation) are still unplanned. The scheme `Relay Notes` is **shared** (`xcshareddata/xcschemes/`) so the test action is reproducible from the CLI.
+3. **Tests** — next section.
+
+### Tests
+
+The `Relay NotesTests` target uses the Swift `Testing` framework (`import Testing`, `@Test`/`#expect`), hosted in the app (`@testable import Relay_Notes`). Run with:
+
+```sh
+xcodebuild test -project "Relay Notes.xcodeproj" -scheme "Relay Notes" \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' 2>&1 | xcbeautify
+```
+
+The scheme `Relay Notes` is **shared** (`xcshareddata/xcschemes/`) — that's what makes the CLI test action reproducible; keep it shared. As of 2026-06-11 the suite is 34 tests / 7 suites, ~12 s warm. Remember the gating convention above: MLX-touching tests compile in but never execute on the simulator. UI tests (XCUIAutomation) are still unplanned.
+
+### CLI fallback when MCP tools are unavailable
+
+Plain `xcodebuild` covers the whole edit→build→test loop (validated end-to-end 2026-06-11) — use it when Xcode isn't running or the MCP server isn't registered. Pipe through `xcbeautify` (Homebrew-installed; `brew install xcbeautify` if missing) — raw xcodebuild output buries the errors:
+
+```sh
+xcodebuild build -project "Relay Notes.xcodeproj" -scheme "Relay Notes" \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' 2>&1 | xcbeautify
+```
 
 There is no linter configured.
+
+### What still requires the Xcode GUI
+
+- **Signing renewal** — free Apple ID provisioning expires every 7 days; renew by building to the device from Xcode. Once signing is valid, CLI device installs work: `xcrun devicectl list devices` shows the target (the iPhone 15 Pro Max), and `xcrun devicectl device install app --device <identifier> <path-to.app>` installs a built `.app`.
+- **SwiftUI previews, Instruments, the visual debugger.**
+- **`MLXSmoke.run()` device validation** — tapping the `#if DEBUG` Tuning-sheet button and reading output in the Xcode console.
 
 **Editing the `.xcodeproj` (adding targets, files, build settings):** prefer the `xcodeproj` Ruby gem over hand-editing `project.pbxproj`. The project uses Xcode 16 file-system-synchronized groups; the gem (1.27.0) round-trips them safely (it reorders sections but preserves the sync groups and the `PBXFileSystemSynchronizedBuildFileExceptionSet`). Validate any project mutation on a full-repo copy in `/tmp` (build + test there) before applying it to the real project — git is the backstop if it goes wrong.
 
