@@ -89,6 +89,16 @@ final class WhisperModelStore {
     /// to `WhisperMLXTranscriber`.
     var location: WhisperModelLocation { .directory(modelDirectory) }
 
+    /// The location consumers should load from right now, or `nil` when the
+    /// downloaded model isn't usable (missing / mid-download / failed).
+    /// `WhisperMLXTranscriber` reads this per call and falls back to
+    /// `.bundled` on `nil`. Lives here (not on the consumer) so the
+    /// `status == .ready` comparison stays on the main actor — `Status` is
+    /// implicitly `@MainActor` as a nested type.
+    var activeLocation: WhisperModelLocation? {
+        status == .ready ? location : nil
+    }
+
     @ObservationIgnored
     private let fileManager: FileManager
 

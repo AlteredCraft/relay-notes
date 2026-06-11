@@ -58,6 +58,24 @@ struct WhisperModelStoreTests {
     }
 
     @Test
+    func activeLocationIsNilWhenModelMissing() {
+        let tmp = makeTempDirectory()
+        defer { cleanup(tmp) }
+        let store = WhisperModelStore(modelDirectory: tmp)
+        #expect(store.activeLocation == nil)
+    }
+
+    @Test
+    func activeLocationIsModelDirectoryWhenReady() throws {
+        let tmp = makeTempDirectory()
+        defer { cleanup(tmp) }
+        let weights = tmp.appendingPathComponent("weights.safetensors")
+        try Data("not-real-weights".utf8).write(to: weights)
+        let store = WhisperModelStore(modelDirectory: tmp)
+        #expect(store.activeLocation == .directory(tmp))
+    }
+
+    @Test
     func stageBundledAssetsCopiesAllThreeFiles() throws {
         let tmp = makeTempDirectory()
         defer { cleanup(tmp) }

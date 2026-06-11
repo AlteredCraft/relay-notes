@@ -128,8 +128,15 @@ nonisolated enum MLXSmoke {
         }
     }
 
-    // MARK: - T1.1b-4 — end-to-end transcript (the T1.1 done-when)
+    // MARK: - T1.1b-4 / T1.2c — end-to-end transcript, cold then cached
 
+    /// Two passes through the *same* transcriber instance: the first pays
+    /// model load + shader JIT, the second should show T1.2c's asset cache
+    /// (expect the gap to be roughly the old per-call load cost).
+    /// `@MainActor` because the transcriber's init is main-actor-isolated
+    /// (see the note on `WhisperMLXTranscriber`); the transcribe calls
+    /// themselves hop to the actor's executor.
+    @MainActor
     private static func runWhisperTranscribe() async {
         print("[MLXSmoke] WhisperMLXTranscriber:")
         guard let flacURL = Bundle.main.url(forResource: "ls_test", withExtension: "flac") else {
@@ -139,11 +146,16 @@ nonisolated enum MLXSmoke {
         let transcriber = WhisperMLXTranscriber()
         let options = TranscriptionOptions.whisperMLX
         do {
-            let start = Date()
+            let coldStart = Date()
             let transcript = try await transcriber.transcribe(flacURL, options: options)
-            let ms = Int(Date().timeIntervalSince(start) * 1000)
-            print("  total transcribe time      = \(ms) ms")
+            let coldMs = Int(Date().timeIntervalSince(coldStart) * 1000)
+            print("  transcribe time (cold)     = \(coldMs) ms")
             print("  transcript                 = '\(transcript)'")
+
+            let warmStart = Date()
+            _ = try await transcriber.transcribe(flacURL, options: options)
+            let warmMs = Int(Date().timeIntervalSince(warmStart) * 1000)
+            print("  transcribe time (cached)   = \(warmMs) ms")
         } catch {
             print("  ERROR: \(error)")
         }

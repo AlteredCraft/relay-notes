@@ -79,7 +79,7 @@ xcodebuild test -project "Relay Notes.xcodeproj" -scheme "Relay Notes" \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' 2>&1 | xcbeautify
 ```
 
-The scheme `Relay Notes` is **shared** (`xcshareddata/xcschemes/`) — that's what makes the CLI test action reproducible; keep it shared. As of 2026-06-11 the suite is 34 tests / 7 suites, ~12 s warm. Remember the gating convention above: MLX-touching tests compile in but never execute on the simulator. UI tests (XCUIAutomation) are still unplanned.
+The scheme `Relay Notes` is **shared** (`xcshareddata/xcschemes/`) — that's what makes the CLI test action reproducible; keep it shared. As of 2026-06-11 the suite is 41 tests / 8 suites, ~12 s warm. Remember the gating convention above: MLX-touching tests compile in but never execute on the simulator. UI tests (XCUIAutomation) are still unplanned. New test *files* must be wired into the pbxproj: `ruby scripts/add_test_file.rb <FileName.swift>` (the test target is a plain `PBXGroup`, not a synchronized one).
 
 ### CLI fallback when MCP tools are unavailable
 

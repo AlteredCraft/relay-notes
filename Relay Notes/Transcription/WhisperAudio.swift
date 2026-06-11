@@ -201,12 +201,24 @@ nonisolated enum WhisperAudio {
     /// Log-mel spectrogram of 16 kHz mono PCM, normalized to roughly `[-1, 1]`.
     /// Output shape: `[nFrames, nMels]` where `nFrames = audioLength / hopLength`
     /// for a `chunkLength`-second clip (3000 frames for 30 s @ 16 kHz).
+    /// Loads the filterbank from `location` on every call — callers that hold
+    /// a cached filterbank (the T1.2c transcriber) use the `filters:` overload.
     static func logMelSpectrogram(
         audio: MLXArray,
         nMels: Int = 80,
         padding: Int = 0,
         from location: WhisperModelLocation
     ) throws -> MLXArray {
+        let filters = try melFilters(nMels: nMels, from: location)
+        return logMelSpectrogram(audio: audio, filters: filters, padding: padding)
+    }
+
+    /// Same computation with a preloaded filterbank (`[nMels, nFFT/2 + 1]`).
+    static func logMelSpectrogram(
+        audio: MLXArray,
+        filters: MLXArray,
+        padding: Int = 0
+    ) -> MLXArray {
         var x = audio
         if padding > 0 {
             x = padded(x, widths: [IntOrPair((0, padding))])
@@ -221,7 +233,6 @@ nonisolated enum WhisperAudio {
         // |X|^2
         let magnitudes = square(abs(dropped))
 
-        let filters = try melFilters(nMels: nMels, from: location)   // [nMels, nFFT/2 + 1]
         let melSpec = magnitudes.matmul(filters.T)                   // [t-1, nMels]
 
         var logSpec = log10(maximum(melSpec, MLXArray(Float(1e-10))))
