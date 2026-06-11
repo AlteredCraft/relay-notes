@@ -1,4 +1,7 @@
-import AVFoundation
+// @preconcurrency: AVAudioConverter's input block is @Sendable in the SDK but
+// is invoked synchronously during convert(to:) — the captures (file handle,
+// reusable chunk buffer) never actually cross threads.
+@preconcurrency import AVFoundation
 import Foundation
 import MLX
 
@@ -40,6 +43,11 @@ nonisolated enum WhisperAudio {
     /// Decodes any AVFoundation-readable audio file to 16 kHz mono Float32 PCM.
     /// Returned as a Swift `[Float]` so callers can wrap in an `MLXArray` on
     /// whichever stream they want — the audio file itself never touches MLX.
+    ///
+    /// Reads in a loop: `AVAudioFile.read(into:)` is not guaranteed to fill
+    /// the buffer in one call (observed returning 256 frames short under
+    /// parallel test load, 2026-06-11), so both paths keep reading until
+    /// `framePosition` reaches `file.length`.
     static func loadPCM(url: URL) throws -> [Float] {
         let file: AVAudioFile
         do {
@@ -58,16 +66,23 @@ nonisolated enum WhisperAudio {
             throw Error.audioConversionFailed
         }
 
-        guard let srcBuffer = AVAudioPCMBuffer(
-            pcmFormat: srcFormat,
-            frameCapacity: AVAudioFrameCount(file.length)
-        ) else {
+        let chunkFrames: AVAudioFrameCount = 65_536
+        guard let srcChunk = AVAudioPCMBuffer(pcmFormat: srcFormat, frameCapacity: chunkFrames) else {
             throw Error.audioBufferAllocationFailed
         }
-        do {
-            try file.read(into: srcBuffer)
-        } catch {
-            throw Error.audioReadFailed(url, error)
+
+        /// Reads the next chunk into `srcChunk`. Returns false at EOF (or on
+        /// a no-progress read, which guards against an infinite loop if the
+        /// file is shorter than its header claims).
+        func readNextChunk() throws -> Bool {
+            guard file.framePosition < file.length else { return false }
+            let before = file.framePosition
+            do {
+                try file.read(into: srcChunk)
+            } catch {
+                throw Error.audioReadFailed(url, error)
+            }
+            return file.framePosition > before
         }
 
         // Fast path: file is already at target rate/channel layout.
@@ -75,7 +90,12 @@ nonisolated enum WhisperAudio {
             && srcFormat.channelCount == destFormat.channelCount
             && srcFormat.commonFormat == destFormat.commonFormat
         {
-            return extractFloats(srcBuffer)
+            var out: [Float] = []
+            out.reserveCapacity(Int(file.length))
+            while try readNextChunk() {
+                out.append(contentsOf: extractFloats(srcChunk))
+            }
+            return out
         }
 
         guard let converter = AVAudioConverter(from: srcFormat, to: destFormat) else {
@@ -83,30 +103,41 @@ nonisolated enum WhisperAudio {
         }
 
         let ratio = destFormat.sampleRate / srcFormat.sampleRate
-        let destCapacity = AVAudioFrameCount(Double(file.length) * ratio) + 1024
-        guard let destBuffer = AVAudioPCMBuffer(
+        guard let destChunk = AVAudioPCMBuffer(
             pcmFormat: destFormat,
-            frameCapacity: destCapacity
+            frameCapacity: AVAudioFrameCount(Double(chunkFrames) * ratio) + 1024
         ) else {
             throw Error.audioBufferAllocationFailed
         }
 
-        var supplied = false
-        var converterError: NSError?
-        let status = converter.convert(to: destBuffer, error: &converterError) { _, inputStatus in
-            if supplied {
-                inputStatus.pointee = .endOfStream
-                return nil
-            }
-            supplied = true
-            inputStatus.pointee = .haveData
-            return srcBuffer
-        }
-        guard status != .error, converterError == nil else {
-            throw Error.audioConversionFailed
-        }
+        var out: [Float] = []
+        out.reserveCapacity(Int(Double(file.length) * ratio) + 1024)
+        var readError: (any Swift.Error)?
 
-        return extractFloats(destBuffer)
+        while true {
+            var converterError: NSError?
+            let status = converter.convert(to: destChunk, error: &converterError) { _, inputStatus in
+                do {
+                    if try readNextChunk() {
+                        inputStatus.pointee = .haveData
+                        return srcChunk
+                    }
+                    inputStatus.pointee = .endOfStream
+                    return nil
+                } catch {
+                    readError = error
+                    inputStatus.pointee = .endOfStream
+                    return nil
+                }
+            }
+            if let readError { throw readError }
+            guard status != .error, converterError == nil else {
+                throw Error.audioConversionFailed
+            }
+            out.append(contentsOf: extractFloats(destChunk))
+            if status == .endOfStream { break }
+        }
+        return out
     }
 
     private static func extractFloats(_ buffer: AVAudioPCMBuffer) -> [Float] {

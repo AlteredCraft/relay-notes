@@ -50,6 +50,50 @@ struct WhisperAudioTests {
     }
 
     @Test
+    func writtenWAVRoundTripsThroughLoadPCM() throws {
+        // Pins the pattern MLXSmoke's chunked block uses (write PCM → read it
+        // back with loadPCM). The writer must be deallocated before the read:
+        // AVAudioFile finalizes the header on dealloc, and reading while the
+        // writer is alive sees a zero-length file (device failure 2026-06-11).
+        let sampleCount = 32_000  // 2 s @ 16 kHz
+        let pcm = (0..<sampleCount).map { Float(sin(Double($0) * 0.01)) }
+
+        let format = try #require(AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: Double(WhisperAudio.sampleRate),
+            channels: 1,
+            interleaved: false
+        ))
+        let buffer = try #require(AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: AVAudioFrameCount(sampleCount)
+        ))
+        buffer.frameLength = AVAudioFrameCount(sampleCount)
+        pcm.withUnsafeBufferPointer { src in
+            buffer.floatChannelData![0].update(from: src.baseAddress!, count: sampleCount)
+        }
+
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wav-roundtrip-\(UUID().uuidString).wav")
+        defer { try? FileManager.default.removeItem(at: tmpURL) }
+        do {
+            let file = try AVAudioFile(
+                forWriting: tmpURL,
+                settings: format.settings,
+                commonFormat: .pcmFormatFloat32,
+                interleaved: false
+            )
+            try file.write(from: buffer)
+        }  // writer deallocated here — header finalized
+
+        let loaded = try WhisperAudio.loadPCM(url: tmpURL)
+        #expect(loaded.count == sampleCount)
+        // Spot-check a value away from the edges to confirm real content
+        // round-tripped, not just the right-sized silence.
+        #expect(abs(loaded[1_000] - pcm[1_000]) < 1e-4)
+    }
+
+    @Test
     func locationDirectoryReturnsURLWhenFileExists() throws {
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("whisper-loc-\(UUID().uuidString)", isDirectory: true)

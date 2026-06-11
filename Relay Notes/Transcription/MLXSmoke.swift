@@ -141,13 +141,19 @@ nonisolated enum MLXSmoke {
             let tmpURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("mlxsmoke-tiled.wav")
             try? FileManager.default.removeItem(at: tmpURL)
-            let file = try AVAudioFile(
-                forWriting: tmpURL,
-                settings: format.settings,
-                commonFormat: .pcmFormatFloat32,
-                interleaved: false
-            )
-            try file.write(from: buffer)
+            // Scope the writer: AVAudioFile finalizes the WAV header on
+            // deallocation, and a reader that opens the URL while the writer
+            // is still alive sees length 0 (bit us on device 2026-06-11 —
+            // `loadPCM` hit "buffer.frameCapacity != 0").
+            do {
+                let file = try AVAudioFile(
+                    forWriting: tmpURL,
+                    settings: format.settings,
+                    commonFormat: .pcmFormatFloat32,
+                    interleaved: false
+                )
+                try file.write(from: buffer)
+            }
             defer { try? FileManager.default.removeItem(at: tmpURL) }
 
             let transcriber = WhisperMLXTranscriber()
