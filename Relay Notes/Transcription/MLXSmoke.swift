@@ -14,6 +14,7 @@ nonisolated enum MLXSmoke {
         runWhisperAudio()
         runWhisperModel()
         await runWhisperTranscribe()
+        await runWhisperStore()
     }
 
     // MARK: - T1.1a — mlx-swift runtime sanity
@@ -96,6 +97,34 @@ nonisolated enum MLXSmoke {
             print("  encoder time               = \(encMs) ms")
         } catch {
             print("  ERROR: \(error)")
+        }
+    }
+
+    // MARK: - T1.2b — WhisperModelStore presence + asset staging
+
+    /// Reports the on-disk state of the model bundle and exercises
+    /// `stageBundledAssets()`. **Does not** kick off the 481 MB download —
+    /// that runs from T1.2e's Settings "Download model" button once it lands.
+    @MainActor
+    private static func runWhisperStore() {
+        print("[MLXSmoke] WhisperModelStore:")
+        let store = WhisperModelStore()
+        print("  modelDirectory             = \(store.modelDirectory.path)")
+        print("  initial status             = \(store.status)")
+        print("  download URL               = \(WhisperModelStore.downloadURL)")
+        print("  expected SHA-256           = \(WhisperModelStore.expectedSHA256)")
+        print("  expected size              = \(WhisperModelStore.expectedSize) bytes")
+
+        do {
+            try store.stageBundledAssets()
+            print("  staged bundled assets      = config.json, gpt2.tiktoken, mel_filters.safetensors")
+        } catch {
+            print("  ERROR staging bundled assets: \(error)")
+            return
+        }
+
+        if let contents = try? FileManager.default.contentsOfDirectory(atPath: store.modelDirectory.path) {
+            print("  directory contents         = \(contents.sorted())")
         }
     }
 
