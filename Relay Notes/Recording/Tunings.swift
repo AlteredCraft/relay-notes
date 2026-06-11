@@ -12,7 +12,6 @@ final class Tunings {
         static let preset = "tunings.preset"
         static let contextualStringsText = "tunings.contextualStringsText"
         static let engine = "tunings.engine"
-        static let whisperModelVariant = "tunings.whisperModelVariant"
     }
 
     @ObservationIgnored
@@ -36,10 +35,6 @@ final class Tunings {
 
     var engine: TranscriptionEngine {
         didSet { defaults.set(engine.rawValue, forKey: Key.engine) }
-    }
-
-    var whisperModelVariant: WhisperModelVariant {
-        didSet { defaults.set(whisperModelVariant.rawValue, forKey: Key.whisperModelVariant) }
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -69,13 +64,6 @@ final class Tunings {
         } else {
             self.engine = .apple
         }
-
-        if let variantRaw = defaults.string(forKey: Key.whisperModelVariant),
-           let restored = WhisperModelVariant(rawValue: variantRaw) {
-            self.whisperModelVariant = restored
-        } else {
-            self.whisperModelVariant = .smallEN
-        }
     }
 
     func resetToDefaults() {
@@ -84,7 +72,6 @@ final class Tunings {
         preset = .transcription
         contextualStringsText = ""
         engine = .apple
-        whisperModelVariant = .smallEN
     }
 
     var recordingOptions: RecordingOptions {
@@ -104,7 +91,7 @@ final class Tunings {
                 .filter { !$0.isEmpty }
             return .apple(AppleSpeechOptions(preset: preset, contextualStrings: strings))
         case .whisperMLX:
-            return .whisperMLX(WhisperMLXOptions(modelVariant: whisperModelVariant, language: "en"))
+            return .whisperMLX
         }
     }
 

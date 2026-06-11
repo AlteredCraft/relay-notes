@@ -132,21 +132,14 @@ nonisolated enum WhisperAudio {
 
     // MARK: - Mel filters
 
-    /// Loads the precomputed mel filterbank from the app bundle.
+    /// Loads the precomputed mel filterbank from the given location.
     /// Shipped as `mel_filters.safetensors` (converted at staging time from
     /// `mlx-examples/whisper/mlx_whisper/assets/mel_filters.npz`).
-    static func melFilters(nMels: Int = 80) throws -> MLXArray {
+    static func melFilters(nMels: Int = 80, from location: WhisperModelLocation) throws -> MLXArray {
         guard nMels == 80 || nMels == 128 else {
             throw Error.unsupportedNMels(nMels)
         }
-        // Resources are flat-bundled at the .app root — Xcode's file-system-synchronized
-        // group does not preserve the `Resources/whisper-tiny.en/` subdirectory at build
-        // time. Fine for T1.1b (only one model variant is bundled); revisit if we ever
-        // ship multiple variants whose filenames would collide.
-        guard let url = Bundle.main.url(
-            forResource: "mel_filters",
-            withExtension: "safetensors"
-        ) else {
+        guard let url = location.fileURL(name: "mel_filters", ext: "safetensors") else {
             throw Error.melFiltersNotFound
         }
         let dict = try loadArrays(url: url)
@@ -211,7 +204,8 @@ nonisolated enum WhisperAudio {
     static func logMelSpectrogram(
         audio: MLXArray,
         nMels: Int = 80,
-        padding: Int = 0
+        padding: Int = 0,
+        from location: WhisperModelLocation
     ) throws -> MLXArray {
         var x = audio
         if padding > 0 {
@@ -227,8 +221,8 @@ nonisolated enum WhisperAudio {
         // |X|^2
         let magnitudes = square(abs(dropped))
 
-        let filters = try melFilters(nMels: nMels)   // [nMels, nFFT/2 + 1]
-        let melSpec = magnitudes.matmul(filters.T)   // [t-1, nMels]
+        let filters = try melFilters(nMels: nMels, from: location)   // [nMels, nFFT/2 + 1]
+        let melSpec = magnitudes.matmul(filters.T)                   // [t-1, nMels]
 
         var logSpec = log10(maximum(melSpec, MLXArray(Float(1e-10))))
         let cap = logSpec.max() - Float(8.0)

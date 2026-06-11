@@ -18,7 +18,7 @@ import MLXNN
 
 /// Whisper model dimensions, parsed from the HF model's `config.json`.
 /// Field names use Python `snake_case` to match the JSON keys exactly.
-struct ModelDimensions: Sendable, Codable {
+nonisolated struct ModelDimensions: Sendable, Codable {
     let n_mels: Int
     let n_audio_ctx: Int
     let n_audio_state: Int
@@ -30,8 +30,8 @@ struct ModelDimensions: Sendable, Codable {
     let n_text_head: Int
     let n_text_layer: Int
 
-    static func loadFromBundle() throws -> ModelDimensions {
-        guard let url = Bundle.main.url(forResource: "config", withExtension: "json") else {
+    static func load(from location: WhisperModelLocation) throws -> ModelDimensions {
+        guard let url = location.fileURL(name: "config", ext: "json") else {
             throw WhisperModelError.configNotFound
         }
         let data = try Data(contentsOf: url)
@@ -49,7 +49,7 @@ enum WhisperModelError: Error {
 
 /// Pre-computes the sinusoidal positional embedding used by the encoder.
 /// Output shape: `[length, channels]`.
-func sinusoids(length: Int, channels: Int, maxTimescale: Float = 10_000) -> MLXArray {
+nonisolated func sinusoids(length: Int, channels: Int, maxTimescale: Float = 10_000) -> MLXArray {
     precondition(channels % 2 == 0, "sinusoid channels must be even")
     let half = channels / 2
     let logTimescaleIncrement = log(maxTimescale) / Float(half - 1)
@@ -348,16 +348,15 @@ nonisolated final class WhisperModel: Module {
 
     // MARK: Load
 
-    /// Loads the model with weights from the app bundle.
-    /// **Note:** the safetensors must be present (run `scripts/fetch-whisper-tiny.sh`
-    /// once). The `weights.safetensors` file is gitignored.
-    static func loadFromBundle() throws -> WhisperModel {
-        let dims = try ModelDimensions.loadFromBundle()
+    /// Loads the model with weights from the given location.
+    /// **Note:** in dev (`.bundled`) the weights must be present (run
+    /// `scripts/fetch-whisper-model.sh` once). The `weights.safetensors` file
+    /// is gitignored. In prod (`.directory`) T1.2b's download manager places
+    /// the file in Application Support.
+    static func load(from location: WhisperModelLocation) throws -> WhisperModel {
+        let dims = try ModelDimensions.load(from: location)
         let model = WhisperModel(dims: dims)
-        guard let weightsURL = Bundle.main.url(
-            forResource: "weights",
-            withExtension: "safetensors"
-        ) else {
+        guard let weightsURL = location.fileURL(name: "weights", ext: "safetensors") else {
             throw WhisperModelError.weightsNotFound
         }
         let flat: [String: MLXArray]
@@ -367,8 +366,8 @@ nonisolated final class WhisperModel: Module {
             throw WhisperModelError.weightsLoadFailed(error)
         }
         // Drop the `alignment_heads` entry — we don't port word-timestamp
-        // alignment for T1.1b. The remaining keys map cleanly into the
-        // `encoder.*` / `decoder.*` tree.
+        // alignment. The remaining keys map cleanly into the `encoder.*` /
+        // `decoder.*` tree.
         let filtered = flat.filter { $0.key != "alignment_heads" }
         let params = ModuleParameters.unflattened(filtered)
         model.update(parameters: params)

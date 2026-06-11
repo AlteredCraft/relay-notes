@@ -11,7 +11,7 @@ struct WhisperTokenizerTests {
         // Just ensuring init() succeeds with the bundled `gpt2.tiktoken` is the
         // load-bearing assertion — `init` throws `.vocabIncomplete` if any of
         // the 50256 ranks is missing.
-        _ = try WhisperTokenizer()
+        _ = try WhisperTokenizer(location: .bundled)
     }
 
     @Test
@@ -39,13 +39,13 @@ struct WhisperTokenizerTests {
     func decodeASCIISingleByteTokens() throws {
         // The first 5 ranks in `gpt2.tiktoken` are the printable ASCII bytes
         // 0x21..0x25 ("!\"#$%") in raw form.
-        let tokenizer = try WhisperTokenizer()
+        let tokenizer = try WhisperTokenizer(location: .bundled)
         #expect(tokenizer.decode([0, 1, 2, 3, 4]) == "!\"#$%")
     }
 
     @Test
     func decodeSkipsSpecialTokens() throws {
-        let tokenizer = try WhisperTokenizer()
+        let tokenizer = try WhisperTokenizer(location: .bundled)
         let ids = [
             WhisperTokenizer.sot,           // skipped
             0,                              // "!"
@@ -58,13 +58,13 @@ struct WhisperTokenizerTests {
 
     @Test
     func decodeEmptyArrayReturnsEmptyString() throws {
-        let tokenizer = try WhisperTokenizer()
+        let tokenizer = try WhisperTokenizer(location: .bundled)
         #expect(tokenizer.decode([]) == "")
     }
 
     @Test
     func decodeIgnoresOutOfRangeIDs() throws {
-        let tokenizer = try WhisperTokenizer()
+        let tokenizer = try WhisperTokenizer(location: .bundled)
         // Negative and overflow IDs should be filtered out, valid ones decoded.
         #expect(tokenizer.decode([-1, 999_999, 0]) == "!")
     }

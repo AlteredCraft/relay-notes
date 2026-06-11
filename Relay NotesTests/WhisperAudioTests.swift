@@ -36,8 +36,31 @@ struct WhisperAudioTests {
     func melFiltersRejectsUnsupportedBinCount() {
         // The precondition fires before any MLX call, so this is simulator-safe.
         #expect(throws: WhisperAudio.Error.self) {
-            _ = try WhisperAudio.melFilters(nMels: 64)
+            _ = try WhisperAudio.melFilters(nMels: 64, from: .bundled)
         }
+    }
+
+    @Test
+    func locationDirectoryReturnsNilForMissingFile() {
+        // Pure URL-resolution logic, no MLX.
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("whisper-loc-\(UUID().uuidString)", isDirectory: true)
+        let location = WhisperModelLocation.directory(tmp)
+        #expect(location.fileURL(name: "config", ext: "json") == nil)
+    }
+
+    @Test
+    func locationDirectoryReturnsURLWhenFileExists() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("whisper-loc-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let file = tmp.appendingPathComponent("config.json")
+        try Data("{}".utf8).write(to: file)
+
+        let location = WhisperModelLocation.directory(tmp)
+        let resolved = try #require(location.fileURL(name: "config", ext: "json"))
+        #expect(resolved.path == file.path)
     }
 
     @Test
@@ -95,14 +118,14 @@ struct WhisperAudioTests {
 
     @Test
     func melFiltersLoadFromBundle() throws {
-        let filters = try WhisperAudio.melFilters(nMels: 80)
+        let filters = try WhisperAudio.melFilters(nMels: 80, from: .bundled)
         #expect(filters.shape == [80, WhisperAudio.nFFT / 2 + 1])
     }
 
     @Test
     func logMelSpectrogramShapeFromZeroAudio() throws {
         let silence = zeros([WhisperAudio.nSamples], dtype: .float32)
-        let mel = try WhisperAudio.logMelSpectrogram(audio: silence)
+        let mel = try WhisperAudio.logMelSpectrogram(audio: silence, from: .bundled)
         #expect(mel.shape == [WhisperAudio.nFrames, 80])
     }
 
@@ -114,7 +137,7 @@ struct WhisperAudioTests {
         ))
         let pcm = try WhisperAudio.loadPCM(url: url)
         let audio = WhisperAudio.padOrTrim(MLXArray(pcm))
-        let mel = try WhisperAudio.logMelSpectrogram(audio: audio)
+        let mel = try WhisperAudio.logMelSpectrogram(audio: audio, from: .bundled)
         #expect(mel.shape == [WhisperAudio.nFrames, 80])
         // Whisper's normalization is `(log10(mel) + 4) / 4` floored at `max - 8`.
         // That doesn't cap the absolute range — it bounds the *dynamic* range:

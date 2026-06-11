@@ -39,7 +39,7 @@ nonisolated enum MLXSmoke {
     private static func runWhisperAudio() {
         print("[MLXSmoke] WhisperAudio mel pipeline:")
         do {
-            let filters = try WhisperAudio.melFilters(nMels: 80)
+            let filters = try WhisperAudio.melFilters(nMels: 80, from: .bundled)
             print("  mel_80 filters shape       = \(filters.shape)")
 
             guard let flacURL = Bundle.main.url(forResource: "ls_test", withExtension: "flac") else {
@@ -53,7 +53,7 @@ nonisolated enum MLXSmoke {
             let audio = WhisperAudio.padOrTrim(MLXArray(pcm))
             print("  pad-or-trim shape          = \(audio.shape)")
 
-            let mel = try WhisperAudio.logMelSpectrogram(audio: audio)
+            let mel = try WhisperAudio.logMelSpectrogram(audio: audio, from: .bundled)
             eval(mel)
             let melMin: Float = mel.min().item()
             let melMax: Float = mel.max().item()
@@ -70,7 +70,7 @@ nonisolated enum MLXSmoke {
         print("[MLXSmoke] WhisperModel:")
         do {
             let loadStart = Date()
-            let model = try WhisperModel.loadFromBundle()
+            let model = try WhisperModel.load(from: .bundled)
             let loadMs = Int(Date().timeIntervalSince(loadStart) * 1000)
             print("  load time                  = \(loadMs) ms")
             print("  dims.n_audio_state         = \(model.dims.n_audio_state)")
@@ -84,7 +84,7 @@ nonisolated enum MLXSmoke {
             }
             let pcm = try WhisperAudio.loadPCM(url: flacURL)
             let audio = WhisperAudio.padOrTrim(MLXArray(pcm))
-            let mel = try WhisperAudio.logMelSpectrogram(audio: audio)
+            let mel = try WhisperAudio.logMelSpectrogram(audio: audio, from: .bundled)
             // Encoder expects [B, n_frames, n_mels]. Add a batch dim.
             let melBatch = expandedDimensions(mel, axis: 0)
 
@@ -108,7 +108,7 @@ nonisolated enum MLXSmoke {
             return
         }
         let transcriber = WhisperMLXTranscriber()
-        let options = TranscriptionOptions.whisperMLX(WhisperMLXOptions())
+        let options = TranscriptionOptions.whisperMLX
         do {
             let start = Date()
             let transcript = try await transcriber.transcribe(flacURL, options: options)

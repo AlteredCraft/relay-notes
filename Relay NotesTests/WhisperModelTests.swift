@@ -13,7 +13,7 @@ struct WhisperModelTests {
 
     @Test
     func configLoadsFromBundle() throws {
-        let dims = try ModelDimensions.loadFromBundle()
+        let dims = try ModelDimensions.load(from: .bundled)
         // Values pinned to whisper-small.en
         // (https://huggingface.co/mlx-community/whisper-small.en-mlx).
         // Promoted to default 2026-06-10 after small.en's ~481 MB FP16 weights

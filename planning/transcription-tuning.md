@@ -156,16 +156,16 @@ For `WhisperMLXTranscriber` the streaming/file-based distinction collapses to on
 
 ## Tier 2 — Local ASR via MLX (Whisper)
 
-**Status: planned (T1).** Engine is `WhisperMLXTranscriber`, built on `mlx-swift` (raw — *not* WhisperKit; see "Decisions log" 2026-06-10 for why). T1.1b smoke-test model: `mlx-community/whisper-tiny.en-mlx` (~75 MB) — chosen to sidestep the `increased-memory-limit` entitlement question on free-tier sideload (see notes.md T1 watch-item). T1.2 production model still targets `mlx-community/whisper-small.en-mlx` (~250 MB), gated on the entitlement-vs-free-tier resolution. The dials and defaults below are the *plan* — empirical outcomes get appended once T1 ships.
+**Status: T1.1 shipped (file-based transcribe on device, 2026-06-10), T1.2 in progress.** Engine is `WhisperMLXTranscriber`, built on `mlx-swift` (raw — *not* WhisperKit; see "Decisions log" 2026-06-10 for why). Default model `mlx-community/whisper-small.en-mlx` (~250 MB downloaded → ~481 MB FP16 resident) — empirically validated 2026-06-10 to load and run on iPhone 15 Pro Max without the `increased-memory-limit` entitlement, removing the prior free-tier-sideload watch-item. The dials and defaults below are still the *plan* until T1.2 lands the recorder wiring + download UX — empirical outcomes get appended once that ships.
 
 ### The dials
 
 | # | Dial | Range / values | Current default |
 |---|---|---|---|
-| 1 | Model variant | `whisper-small.en` is the default (empirically validated on iPhone 15 Pro Max without the increased-memory-limit entitlement); `whisper-tiny.en` available as a lower-friction fallback | `small.en` |
-| 2 | Language | `en` only in the first cut (multilingual deferred until Tier 2 stabilizes) | `en` |
+| 1 | Model variant | `whisper-small.en` only — `tiny.en` was removed 2026-06-10 (T1.2a) after on-device validation showed `small.en` runs without the increased-memory-limit entitlement. No UI picker; if a second variant ever returns we re-add the enum | `small.en` |
+| 2 | Language | `en` only — Whisper assets are the English-only build (`gpt2.tiktoken` vocab + English-only special tokens). Multilingual would require a different vocab + decode path | `en` |
 
-Both are exposed in the Settings sheet under "Transcription engine → On-device (Whisper)" — visible only when Whisper is the selected engine.
+Neither is user-exposed — there's only one valid value for each in v1. They live in the dials table because they're the load-bearing model-side choices.
 
 ### Hidden defaults
 
@@ -205,6 +205,8 @@ Both are exposed in the Settings sheet under "Transcription engine → On-device
 | 2026-06-10 | T1.1 split into T1.1a (mlx-swift "hello on device") + T1.1b (Whisper transcript) | Research surfaced that `mlx-swift-examples` has no Whisper reference (issue #146 closed unanswered); the actual reference is `ml-explore/mlx-examples` Python — a port, not a copy-paste. T1.1a derisks the SPM dep + Metal-on-device link in one evening before investing in the multi-day port |
 | 2026-06-10 | T1.1b smoke-test model: `whisper-tiny.en` (not `small.en`) | `small.en` at FP16 likely needs the `increased-memory-limit` entitlement; free-tier sideload provisioning profiles may strip it. `tiny.en` (~75 MB) fits under the default budget. `small.en` stays the T1.2 production target, gated on entitlement-on-free-tier validation |
 | 2026-06-10 | Default model promoted to `whisper-small.en` | After T1.1's tiny.en run succeeded, swapped in small.en (481 MB FP16 safetensors) and re-ran the same smoke. Process did not get killed by jetsam — entitlement empirically *not* required for whisper-small.en on iPhone 15 Pro Max. Accuracy delta on `ls_test.flac`: tiny.en said "goods sold openly, shorted the burden" (nonsense); small.en said "good soul openly shouldered the burden" (the correct phrase). Cost: encoder 60→419 ms, total 491→1772 ms — ~3.6× slower but ~3.4× real-time on a 6 s clip, comfortable for finalize-only UX |
+| 2026-06-10 | Dropped `tiny.en` support entirely (T1.2a) | With `small.en` validated as the production default and no user-facing variant picker planned for v1, `tiny.en` was dead code (one persisted `whisperModelVariant` value never read, one `WhisperModelVariant` enum case never reached, fallback wiring nobody would hit). Deleted the enum, the `Tunings.whisperModelVariant` knob, and the `WhisperMLXOptions` struct's variant + language fields (both English-only-build dead-weight). If a second variant ever returns, re-adding the enum is cheap |
+| 2026-06-10 | Whisper assets parametrized by `WhisperModelLocation` (T1.2a) | New `nonisolated enum` with `.bundled` (Bundle lookup, dev) and `.directory(URL)` (filesystem, T1.2b's download path). Refactor was mechanical — `ModelDimensions.loadFromBundle()` → `load(from:)`, same for `WhisperModel`; `WhisperTokenizer.init()` → `init(location:)`; `WhisperAudio.{melFilters,logMelSpectrogram}` gained `from:` (no default — every call site declares its location). T1.2b's `WhisperModelStore` will inject `.directory(applicationSupportURL)` so the recorder uses downloaded weights; bundled stays for dev iteration |
 
 ---
 

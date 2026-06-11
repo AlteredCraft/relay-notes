@@ -4,17 +4,12 @@ import Speech
 
 enum TranscriptionOptions: Sendable {
     case apple(AppleSpeechOptions)
-    case whisperMLX(WhisperMLXOptions)
+    case whisperMLX
 }
 
 struct AppleSpeechOptions: Sendable {
     var preset: SpeechTranscriber.Preset = .transcription
     var contextualStrings: [String] = []
-}
-
-struct WhisperMLXOptions: Sendable {
-    var modelVariant: WhisperModelVariant = .smallEN
-    var language: String = "en"
 }
 
 protocol TranscriptionSession: Sendable, AnyObject {
