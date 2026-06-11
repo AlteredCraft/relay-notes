@@ -1,4 +1,5 @@
 #if DEBUG
+import AVFoundation
 import Foundation
 import MLX
 import MLXRandom
@@ -14,6 +15,7 @@ nonisolated enum MLXSmoke {
         runWhisperAudio()
         runWhisperModel()
         await runWhisperTranscribe()
+        await runWhisperChunked()
         await runWhisperStore()
     }
 
@@ -95,6 +97,66 @@ nonisolated enum MLXSmoke {
             let encMs = Int(Date().timeIntervalSince(encStart) * 1000)
             print("  audio features shape       = \(features.shape)")
             print("  encoder time               = \(encMs) ms")
+        } catch {
+            print("  ERROR: \(error)")
+        }
+    }
+
+    // MARK: - T1.2d-1 — chunked transcribe over a >30 s clip
+
+    /// Tiles the ~6 s test clip to ~36 s, writes it to a temp WAV, and runs it
+    /// through the real `transcribe(_:options:)` path. Exercises the seek
+    /// loop end-to-end on device: expect the sentence repeated ~6×, two
+    /// decode windows, and a timestamp-guided restart between them (pre-T1.2d-1
+    /// this clip would have transcribed only its first 30 s).
+    private static func runWhisperChunked() async {
+        print("[MLXSmoke] Chunked transcribe (tiled ~36 s):")
+        guard let flacURL = Bundle.main.url(forResource: "ls_test", withExtension: "flac") else {
+            print("  ls_test.flac NOT FOUND — skipping chunked transcribe")
+            return
+        }
+        do {
+            let pcm = try WhisperAudio.loadPCM(url: flacURL)
+            var tiled: [Float] = []
+            tiled.reserveCapacity(pcm.count * 6)
+            for _ in 0..<6 { tiled.append(contentsOf: pcm) }
+
+            guard let format = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: Double(WhisperAudio.sampleRate),
+                channels: 1,
+                interleaved: false
+            ), let buffer = AVAudioPCMBuffer(
+                pcmFormat: format,
+                frameCapacity: AVAudioFrameCount(tiled.count)
+            ) else {
+                print("  ERROR: couldn't allocate tiled buffer")
+                return
+            }
+            buffer.frameLength = AVAudioFrameCount(tiled.count)
+            tiled.withUnsafeBufferPointer { src in
+                buffer.floatChannelData![0].update(from: src.baseAddress!, count: tiled.count)
+            }
+
+            let tmpURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("mlxsmoke-tiled.wav")
+            try? FileManager.default.removeItem(at: tmpURL)
+            let file = try AVAudioFile(
+                forWriting: tmpURL,
+                settings: format.settings,
+                commonFormat: .pcmFormatFloat32,
+                interleaved: false
+            )
+            try file.write(from: buffer)
+            defer { try? FileManager.default.removeItem(at: tmpURL) }
+
+            let transcriber = WhisperMLXTranscriber()
+            let start = Date()
+            let transcript = try await transcriber.transcribe(tmpURL, options: .whisperMLX)
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            print("  tiled duration             = \(tiled.count / WhisperAudio.sampleRate) s")
+            print("  chunked transcribe time    = \(ms) ms")
+            print("  transcript                 = '\(transcript)'")
         } catch {
             print("  ERROR: \(error)")
         }

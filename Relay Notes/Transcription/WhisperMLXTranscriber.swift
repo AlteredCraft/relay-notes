@@ -83,18 +83,45 @@ actor WhisperMLXTranscriber: Transcriber {
         let pcm = try WhisperAudio.loadPCM(url: audio)
         let assets = try assets(at: await resolveLocation())
 
-        // Pad/trim to the 30-s chunk that the encoder expects, build the
-        // log-mel, cast to fp16 to match the model's weight dtype (avoids
-        // mid-graph promotion to fp32), and add a batch dim.
-        let audioArr = WhisperAudio.padOrTrim(MLXArray(pcm))
+        // T1.2d-1: long audio is walked in 30-s windows with timestamp-guided
+        // seek (the reference's `transcribe.py` loop, model-agnostic half in
+        // `ChunkedTranscription`). Each window decodes independently — the
+        // reference's `condition_on_previous_text` is deliberately not ported
+        // (it's the known repetition-loop failure source and needs the
+        // temperature-fallback machinery we don't have).
+        return ChunkedTranscription.run(pcm: pcm, window: .whisper) { slice in
+            decodeOneWindow(slice, assets: assets)
+        }
+    }
+
+    /// One window: pad/trim to the encoder's 30 s, build the log-mel from the
+    /// cached filterbank, cast to fp16 to match the weight dtype (avoids
+    /// mid-graph promotion to fp32), encode, greedy-decode with timestamp
+    /// rules, then either skip the window as silence or hand the timestamp
+    /// analysis to `parseWindow` for text + seek advance. (`eval` below is
+    /// `MLX.eval(_:)` — forces the lazy tensor graph, not code evaluation.)
+    private func decodeOneWindow(_ samples: ArraySlice<Float>, assets: LoadedAssets) -> WindowDecodeResult {
+        let audioArr = WhisperAudio.padOrTrim(MLXArray(Array(samples)))
         let mel = WhisperAudio.logMelSpectrogram(audio: audioArr, filters: assets.melFilters)
             .asType(.float16)
         let melBatch = expandedDimensions(mel, axis: 0)
         let features = assets.model.embedAudio(melBatch)
         eval(features)
 
-        let ids = WhisperDecoding.greedyDecode(model: assets.model, audioFeatures: features)
-        return assets.tokenizer.decode(ids)
+        let decoded = WhisperDecoding.decodeWindow(model: assets.model, audioFeatures: features)
+
+        // No-voice-activity skip, with the reference's logprob override:
+        // confident decodes survive a high no-speech probability.
+        if decoded.noSpeechProb > WhisperDecoding.noSpeechThreshold
+            && decoded.avgLogprob <= WhisperDecoding.logprobThreshold {
+            return WindowDecodeResult(text: "", advance: .fullWindow)
+        }
+
+        let parsed = WhisperDecoding.parseWindow(decoded.tokens)
+        return WindowDecodeResult(
+            text: assets.tokenizer.decode(parsed.contentTokens),
+            advance: parsed.advance
+        )
     }
 
     func makeStreamingSession(options: TranscriptionOptions) async throws -> any TranscriptionSession {

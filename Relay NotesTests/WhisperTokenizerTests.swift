@@ -28,11 +28,10 @@ struct WhisperTokenizerTests {
     }
 
     @Test
-    func primeSequenceMatchesEnglishOnlyNoTimestamps() {
-        #expect(WhisperTokenizer.primeSequence == [
-            WhisperTokenizer.sot,
-            WhisperTokenizer.notimestamps,
-        ])
+    func sotSequenceIsBareSOTForEnglishOnly() {
+        // English-only models have no language/task tokens; timestamp mode
+        // (T1.2d-1) means <|notimestamps|> is never primed.
+        #expect(WhisperTokenizer.sotSequence == [WhisperTokenizer.sot])
     }
 
     @Test

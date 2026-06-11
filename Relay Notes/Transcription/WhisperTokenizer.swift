@@ -40,9 +40,22 @@ nonisolated final class WhisperTokenizer: Sendable {
     static let notimestamps  = 50_362
     static let timestampBase = 50_363
 
-    /// Prime sequence the decoder is forced to emit before generating content,
-    /// for the English-only, no-timestamps configuration.
-    static let primeSequence: [Int] = [sot, notimestamps]
+    /// Prime sequence the decoder is forced to emit before generating content.
+    /// English-only models have no language/task tokens, so this is just
+    /// `[sot]` (the multilingual sot sequence would be `[sot, lang, task]`).
+    /// Timestamp mode (T1.2d-1) is the only decode configuration —
+    /// `<|notimestamps|>` is suppressed by the timestamp rules.
+    static let sotSequence: [Int] = [sot]
+
+    /// Seconds per timestamp-token step: `input_stride × hop / sample_rate`
+    /// = 2 × 160 / 16 000 (the reference's `time_precision`).
+    static let timePrecision = 0.02
+
+    /// The time a timestamp token encodes, or `nil` for non-timestamp IDs.
+    static func timestampSeconds(_ id: Int) -> Double? {
+        guard id >= timestampBase else { return nil }
+        return Double(id - timestampBase) * timePrecision
+    }
 
     // MARK: - Errors
 
