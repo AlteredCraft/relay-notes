@@ -13,12 +13,13 @@ import MLX
 /// A side effect worth keeping: transcribe calls serialize through the actor,
 /// which is the right behavior for a GPU-bound single-model engine anyway.
 ///
-/// **The `init` is `@MainActor`** — the project's `SWIFT_DEFAULT_ACTOR_ISOLATION
-/// = MainActor` infers it onto the synchronous init (methods keep their actor
-/// isolation; verified empirically — see CHANGE_LOG 2026-06-11). Both opt-out
-/// spellings are rejected by the Xcode 26.5 toolchain (`nonisolated` on a sync
-/// actor init and on an actor declaration). Harmless in practice: every
-/// construction site (`TranscriberFactory`, tests, `MLXSmoke`) is main-actor.
+/// Note on isolation: this type needs no `nonisolated` markers despite the
+/// project's `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` — actor members are
+/// exempt from default isolation (SE-0466). That only holds because
+/// `Transcriber` is a `nonisolated protocol`; an implicitly-`@MainActor`
+/// protocol would propagate `@MainActor` onto the synchronous `init` via
+/// conformance inference (see the note on `Transcriber` and CHANGE_LOG
+/// 2026-06-11).
 actor WhisperMLXTranscriber: Transcriber {
     /// Everything `transcribe` needs, loaded as a unit from one location.
     /// Single-entry cache by design: two `small.en` models resident would be

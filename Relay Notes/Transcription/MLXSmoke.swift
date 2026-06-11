@@ -133,10 +133,6 @@ nonisolated enum MLXSmoke {
     /// Two passes through the *same* transcriber instance: the first pays
     /// model load + shader JIT, the second should show T1.2c's asset cache
     /// (expect the gap to be roughly the old per-call load cost).
-    /// `@MainActor` because the transcriber's init is main-actor-isolated
-    /// (see the note on `WhisperMLXTranscriber`); the transcribe calls
-    /// themselves hop to the actor's executor.
-    @MainActor
     private static func runWhisperTranscribe() async {
         print("[MLXSmoke] WhisperMLXTranscriber:")
         guard let flacURL = Bundle.main.url(forResource: "ls_test", withExtension: "flac") else {
