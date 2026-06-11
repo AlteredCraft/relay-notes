@@ -81,14 +81,19 @@ actor WhisperMLXTranscriber: Transcriber {
         }
 
         let pcm = try WhisperAudio.loadPCM(url: audio)
-        let assets = try assets(at: await resolveLocation())
+        return try await transcribePCM(pcm)
+    }
 
-        // T1.2d-1: long audio is walked in 30-s windows with timestamp-guided
-        // seek (the reference's `transcribe.py` loop, model-agnostic half in
-        // `ChunkedTranscription`). Each window decodes independently — the
-        // reference's `condition_on_previous_text` is deliberately not ported
-        // (it's the known repetition-loop failure source and needs the
-        // temperature-fallback machinery we don't have).
+    /// Shared by the file path above and `WhisperStreamingSession.finish()`.
+    ///
+    /// T1.2d-1: long audio is walked in 30-s windows with timestamp-guided
+    /// seek (the reference's `transcribe.py` loop, model-agnostic half in
+    /// `ChunkedTranscription`). Each window decodes independently — the
+    /// reference's `condition_on_previous_text` is deliberately not ported
+    /// (it's the known repetition-loop failure source and needs the
+    /// temperature-fallback machinery we don't have).
+    func transcribePCM(_ pcm: [Float]) async throws -> String {
+        let assets = try assets(at: await resolveLocation())
         return ChunkedTranscription.run(pcm: pcm, window: .whisper) { slice in
             decodeOneWindow(slice, assets: assets)
         }
@@ -124,13 +129,16 @@ actor WhisperMLXTranscriber: Transcriber {
         )
     }
 
+    /// T1.2d-2: hands back an accumulate-then-decode session (zero partials —
+    /// see `WhisperStreamingSession`). The missing-model preflight guard is
+    /// T1.2f's job (`RecorderViewModel` checks the store before starting);
+    /// a session created without a usable download still works via the
+    /// `.bundled` fallback in dev builds.
     func makeStreamingSession(options: TranscriptionOptions) async throws -> any TranscriptionSession {
         guard case .whisperMLX = options else {
             preconditionFailure(
                 "WhisperMLXTranscriber received non-whisperMLX options — factory and engine selection are out of sync")
         }
-        throw TranscriptionError.engineNotImplemented(
-            "On-device Whisper streaming arrives in T1.2d — for now, Apple Speech is the streaming engine."
-        )
+        return WhisperStreamingSession(transcriber: self)
     }
 }

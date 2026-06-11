@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Testing
 @testable import Relay_Notes
@@ -87,6 +88,67 @@ struct WhisperMLXTranscriberTests {
         let transcriber = try #require(factory.transcriber(for: .whisperMLX) as? WhisperMLXTranscriber)
         let location = await transcriber.resolveLocation()
         #expect(location == .directory(tmp))
+    }
+
+    // MARK: - Streaming session (T1.2d-2, simulator-safe — no MLX until finish)
+
+    @Test
+    func makeStreamingSessionReturnsWhisperSession() async throws {
+        let transcriber = WhisperMLXTranscriber()
+        let session = try await transcriber.makeStreamingSession(options: .whisperMLX)
+        #expect(session is WhisperStreamingSession)
+    }
+
+    @Test
+    func sessionRequestsWhisperNativeAudioFormat() async throws {
+        // 16 kHz mono Float32 — this is what makes LiveAudioEngine's converter
+        // deliver mel-pipeline-ready buffers, with no resample at finish time.
+        let session = WhisperStreamingSession(transcriber: WhisperMLXTranscriber())
+        let format = try #require(session.audioFormat)
+        #expect(format.sampleRate == 16_000)
+        #expect(format.channelCount == 1)
+        #expect(format.commonFormat == .pcmFormatFloat32)
+    }
+
+    @Test
+    func feedAccumulatesSamplesAcrossBuffers() throws {
+        let session = WhisperStreamingSession(transcriber: WhisperMLXTranscriber())
+        session.feed(try makePCMBuffer(frames: 4_096))
+        session.feed(try makePCMBuffer(frames: 1_024))
+        #expect(session.bufferedSampleCount == 5_120)
+    }
+
+    @Test
+    func feedIgnoresEmptyBuffers() throws {
+        let session = WhisperStreamingSession(transcriber: WhisperMLXTranscriber())
+        session.feed(try makePCMBuffer(frames: 0))
+        #expect(session.bufferedSampleCount == 0)
+    }
+
+    @Test
+    func cancelDropsBufferAndFinishesUpdates() async throws {
+        let session = WhisperStreamingSession(transcriber: WhisperMLXTranscriber())
+        session.feed(try makePCMBuffer(frames: 2_048))
+        await session.cancel()
+        #expect(session.bufferedSampleCount == 0)
+
+        // The updates stream must complete without ever yielding — the
+        // zero-partials contract.
+        for await _ in session.updates {
+            Issue.record("Whisper session must not emit partials")
+        }
+    }
+
+    private func makePCMBuffer(frames: AVAudioFrameCount) throws -> AVAudioPCMBuffer {
+        let format = try #require(AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 16_000,
+            channels: 1,
+            interleaved: false
+        ))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: max(frames, 1)))
+        buffer.frameLength = frames
+        return buffer
     }
 
     // MARK: - Asset caching (device-only — loads real weights via MLX)
