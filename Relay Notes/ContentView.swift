@@ -11,6 +11,7 @@ import SwiftUI
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: RecorderViewModel?
+    @State private var whisperStore = WhisperModelStore()
     @State private var showSettings = false
     @State private var searchText = ""
 
@@ -40,17 +41,23 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showSettings) {
                 if let viewModel {
-                    SettingsView(tunings: viewModel.tunings)
+                    SettingsView(tunings: viewModel.tunings, whisperStore: whisperStore)
                 }
             }
         }
         .task {
             if viewModel == nil {
+                // A persisted `.whisperMLX` engine choice can outlive the model
+                // it needs (deleted last session, or never downloaded). Reconcile
+                // before first record so we never start a Whisper session with no
+                // model on disk.
+                let tunings = Tunings()
+                tunings.reconcileEngineAvailability(whisperReady: whisperStore.status == .ready)
                 viewModel = RecorderViewModel(
                     engine: LiveAudioEngine(),
-                    transcriberFactory: TranscriberFactory(),
+                    transcriberFactory: TranscriberFactory(whisperModelStore: whisperStore),
                     modelContext: modelContext,
-                    tunings: Tunings()
+                    tunings: tunings
                 )
             }
         }

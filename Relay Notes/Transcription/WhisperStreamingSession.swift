@@ -23,6 +23,8 @@ nonisolated final class WhisperStreamingSession: TranscriptionSession {
 
     let updates: AsyncStream<String>
 
+    var modelDescription: String { WhisperMLXTranscriber.modelDescription }
+
     private let updatesContinuation: AsyncStream<String>.Continuation
     private let transcriber: WhisperMLXTranscriber
     private let pcm = Mutex<[Float]>([])

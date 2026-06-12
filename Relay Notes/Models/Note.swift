@@ -9,18 +9,27 @@ final class Note {
     var transcript: String
     var title: String?
 
+    /// Human-readable provenance label of the engine/model that produced this
+    /// transcript, e.g. "Apple Speech" or "Whisper (small.en)". Optional and
+    /// `nil` for notes recorded before provenance capture existed (no backfill
+    /// — we never stored it historically); the detail view hides the row when
+    /// absent. Captured at save time from `TranscriptionSession.modelDescription`.
+    var transcriptionModel: String?
+
     init(
         id: UUID = UUID(),
         createdAt: Date = .now,
         audioFilename: String,
         transcript: String,
-        title: String? = nil
+        title: String? = nil,
+        transcriptionModel: String? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
         self.audioFilename = audioFilename
         self.transcript = transcript
         self.title = title
+        self.transcriptionModel = transcriptionModel
     }
 }
 

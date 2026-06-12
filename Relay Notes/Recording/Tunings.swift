@@ -74,6 +74,18 @@ final class Tunings {
         engine = .apple
     }
 
+    /// Enforces the invariant that Whisper can only be the selected engine
+    /// while its model is present on disk. If Whisper is selected but the model
+    /// isn't ready, fall back to Apple (always available). Single source of
+    /// truth for the rule — called at launch (a persisted `.whisperMLX` choice
+    /// can outlive a deleted model) and right after a model delete. No-op when
+    /// Apple is selected or the model is ready.
+    func reconcileEngineAvailability(whisperReady: Bool) {
+        if engine == .whisperMLX && !whisperReady {
+            engine = .apple
+        }
+    }
+
     var recordingOptions: RecordingOptions {
         RecordingOptions(
             format: .m4aAAC,

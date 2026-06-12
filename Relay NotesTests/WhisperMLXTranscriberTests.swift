@@ -100,6 +100,15 @@ struct WhisperMLXTranscriberTests {
     }
 
     @Test
+    func sessionReportsWhisperModelProvenance() {
+        // The session is the authority on what produced the transcript;
+        // RecorderViewModel persists this onto the Note for the detail view.
+        let session = WhisperStreamingSession(transcriber: WhisperMLXTranscriber())
+        #expect(session.modelDescription == WhisperMLXTranscriber.modelDescription)
+        #expect(session.modelDescription.contains("small.en"))
+    }
+
+    @Test
     func sessionRequestsWhisperNativeAudioFormat() async throws {
         // 16 kHz mono Float32 — this is what makes LiveAudioEngine's converter
         // deliver mel-pipeline-ready buffers, with no resample at finish time.
@@ -156,8 +165,14 @@ struct WhisperMLXTranscriberTests {
     #if !targetEnvironment(simulator)
     @Test
     func assetsAreCachedAcrossCalls() async throws {
-        let transcriber = WhisperMLXTranscriber()
-        let reused = try await transcriber.cacheReusesInstances(at: .bundled)
+        // Weights are download-only (no longer bundled), so this manual device
+        // probe needs the model already downloaded via Settings. Skip cleanly
+        // when it isn't present rather than failing on missing weights.
+        let store = WhisperModelStore()
+        guard store.status == .ready else { return }
+        let transcriber = WhisperMLXTranscriber(store: store)
+        let location = await transcriber.resolveLocation()
+        let reused = try await transcriber.cacheReusesInstances(at: location)
         #expect(reused)
     }
     #endif

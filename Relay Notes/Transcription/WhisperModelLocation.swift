@@ -1,17 +1,23 @@
 import Foundation
 
-/// Where the Whisper asset bundle (config + tokenizer + mel filters + weights)
-/// lives at load time.
+/// Where the Whisper assets (config + tokenizer + mel filters + weights) live
+/// at load time.
 ///
-/// - `.bundled` — flat at the `.app` root (dev builds only; the 481 MB
-///   `weights.safetensors` is gitignored and fetched via
-///   `scripts/fetch-whisper-model.sh`). File lookup goes through
-///   `Bundle.main.url(forResource:withExtension:)` and intentionally ignores
-///   any subdirectory layout — Xcode's file-system-synchronized group flattens
-///   the resources at build time (see CLAUDE.md).
-/// - `.directory(URL)` — a real on-disk directory (T1.2 will use
-///   `Application Support/whisper/small.en/`). File lookup is
-///   `dir.appendingPathComponent("<name>.<ext>")`.
+/// - `.bundled` — flat at the `.app` root, found via
+///   `Bundle.main.url(forResource:withExtension:)` (intentionally ignores any
+///   subdirectory layout — Xcode's file-system-synchronized group flattens
+///   resources at build time; see CLAUDE.md). **No longer carries the weights:**
+///   the 481 MB `weights.safetensors` is excluded from the bundle (download-only
+///   since 2026-06-11, via a `PBXFileSystemSynchronizedBuildFileExceptionSet`
+///   entry), so `.bundled` resolves only the small staged assets (`config.json`,
+///   `gpt2.tiktoken`, `mel_filters.safetensors`) and the `ls_test.flac` fixture.
+///   A full `WhisperModel.load(from: .bundled)` now fails (no weights) — load
+///   from a downloaded `.directory` instead.
+/// - `.directory(URL)` — a real on-disk directory (the app uses
+///   `Application Support/whisper/small.en/`, populated by `WhisperModelStore`'s
+///   download + asset staging). File lookup is
+///   `dir.appendingPathComponent("<name>.<ext>")`. The only location that can
+///   load a complete model.
 nonisolated enum WhisperModelLocation: Sendable, Equatable {
     case bundled
     case directory(URL)

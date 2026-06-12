@@ -16,9 +16,16 @@ struct NoteDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     titleField
-                    Text(note.createdAt.formatted(date: .complete, time: .shortened))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(note.createdAt.formatted(date: .complete, time: .shortened))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if let model = note.transcriptionModel {
+                            Label("Transcribed with \(model)", systemImage: "waveform")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     Text(note.transcript)
                         .font(.body)
                         .frame(maxWidth: .infinity, alignment: .leading)

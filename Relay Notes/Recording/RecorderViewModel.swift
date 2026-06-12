@@ -122,7 +122,11 @@ final class RecorderViewModel {
             self.session = nil
             currentAudioURL = nil
 
-            let note = Note(audioFilename: url.lastPathComponent, transcript: transcript)
+            let note = Note(
+                audioFilename: url.lastPathComponent,
+                transcript: transcript,
+                transcriptionModel: session.modelDescription
+            )
             modelContext.insert(note)
             try modelContext.save()
             state = .finished(transcript: transcript)

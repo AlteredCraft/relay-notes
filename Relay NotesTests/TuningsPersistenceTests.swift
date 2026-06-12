@@ -55,4 +55,33 @@ struct TuningsPersistenceTests {
 
         #expect(tunings.engine == .apple)
     }
+
+    // MARK: - Engine ↔ model-presence invariant
+
+    @Test func reconcileRevertsWhisperToAppleWhenModelMissing() {
+        let tunings = Tunings(defaults: makeDefaults())
+        tunings.engine = .whisperMLX
+
+        tunings.reconcileEngineAvailability(whisperReady: false)
+
+        #expect(tunings.engine == .apple)
+    }
+
+    @Test func reconcileKeepsWhisperWhenModelReady() {
+        let tunings = Tunings(defaults: makeDefaults())
+        tunings.engine = .whisperMLX
+
+        tunings.reconcileEngineAvailability(whisperReady: true)
+
+        #expect(tunings.engine == .whisperMLX)
+    }
+
+    @Test func reconcileLeavesAppleSelectionUntouched() {
+        let tunings = Tunings(defaults: makeDefaults())
+        tunings.engine = .apple
+
+        tunings.reconcileEngineAvailability(whisperReady: false)
+
+        #expect(tunings.engine == .apple)
+    }
 }

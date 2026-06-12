@@ -13,10 +13,23 @@ nonisolated enum MLXSmoke {
     static func run() async {
         runMLXHello()
         runWhisperAudio()
-        runWhisperModel()
-        await runWhisperTranscribe()
-        await runWhisperChunked()
+        // Weights are download-only now (no longer bundled). Resolve the
+        // downloaded model once; the model-loading sections skip with a hint
+        // when it isn't present. Run the Settings "Download model" flow first.
+        let modelLocation = await resolveDownloadedModelLocation()
+        runWhisperModel(modelLocation)
+        await runWhisperTranscribe(modelLocation)
+        await runWhisperChunked(modelLocation)
         await runWhisperStore()
+    }
+
+    /// The on-disk directory of the downloaded model, or `nil` when it hasn't
+    /// been downloaded yet. Weights live only in Application Support now (the
+    /// 481 MB `weights.safetensors` is no longer copied into the app bundle).
+    @MainActor
+    private static func resolveDownloadedModelLocation() -> WhisperModelLocation? {
+        let store = WhisperModelStore()
+        return store.status == .ready ? store.location : nil
     }
 
     // MARK: - T1.1a — mlx-swift runtime sanity
@@ -69,11 +82,15 @@ nonisolated enum MLXSmoke {
 
     // MARK: - T1.1b-3 — model load + encoder
 
-    private static func runWhisperModel() {
+    private static func runWhisperModel(_ location: WhisperModelLocation?) {
         print("[MLXSmoke] WhisperModel:")
+        guard let location else {
+            print("  model not downloaded — download it from Settings, then re-run. Skipping.")
+            return
+        }
         do {
             let loadStart = Date()
-            let model = try WhisperModel.load(from: .bundled)
+            let model = try WhisperModel.load(from: location)
             let loadMs = Int(Date().timeIntervalSince(loadStart) * 1000)
             print("  load time                  = \(loadMs) ms")
             print("  dims.n_audio_state         = \(model.dims.n_audio_state)")
@@ -109,8 +126,12 @@ nonisolated enum MLXSmoke {
     /// loop end-to-end on device: expect the sentence repeated ~6×, two
     /// decode windows, and a timestamp-guided restart between them (pre-T1.2d-1
     /// this clip would have transcribed only its first 30 s).
-    private static func runWhisperChunked() async {
+    private static func runWhisperChunked(_ location: WhisperModelLocation?) async {
         print("[MLXSmoke] Chunked transcribe (tiled ~36 s):")
+        guard let location else {
+            print("  model not downloaded — download it from Settings, then re-run. Skipping.")
+            return
+        }
         guard let flacURL = Bundle.main.url(forResource: "ls_test", withExtension: "flac") else {
             print("  ls_test.flac NOT FOUND — skipping chunked transcribe")
             return
@@ -156,7 +177,7 @@ nonisolated enum MLXSmoke {
             }
             defer { try? FileManager.default.removeItem(at: tmpURL) }
 
-            let transcriber = WhisperMLXTranscriber()
+            let transcriber = WhisperMLXTranscriber(fallbackLocation: location)
             let start = Date()
             let transcript = try await transcriber.transcribe(tmpURL, options: .whisperMLX)
             let ms = Int(Date().timeIntervalSince(start) * 1000)
@@ -201,13 +222,17 @@ nonisolated enum MLXSmoke {
     /// Two passes through the *same* transcriber instance: the first pays
     /// model load + shader JIT, the second should show T1.2c's asset cache
     /// (expect the gap to be roughly the old per-call load cost).
-    private static func runWhisperTranscribe() async {
+    private static func runWhisperTranscribe(_ location: WhisperModelLocation?) async {
         print("[MLXSmoke] WhisperMLXTranscriber:")
+        guard let location else {
+            print("  model not downloaded — download it from Settings, then re-run. Skipping.")
+            return
+        }
         guard let flacURL = Bundle.main.url(forResource: "ls_test", withExtension: "flac") else {
             print("  ls_test.flac NOT FOUND — skipping transcribe")
             return
         }
-        let transcriber = WhisperMLXTranscriber()
+        let transcriber = WhisperMLXTranscriber(fallbackLocation: location)
         let options = TranscriptionOptions.whisperMLX
         do {
             let coldStart = Date()

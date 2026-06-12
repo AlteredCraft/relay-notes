@@ -21,6 +21,13 @@ import MLX
 /// conformance inference (see the note on `Transcriber` and CHANGE_LOG
 /// 2026-06-11).
 actor WhisperMLXTranscriber: Transcriber {
+    /// Provenance label persisted on the `Note` (via the streaming session's
+    /// `modelDescription`). `nonisolated static` so the session can read it
+    /// without awaiting the actor. v1 ships a single variant; when multiple
+    /// Whisper models land, derive this from the resolved `WhisperModelLocation`
+    /// instead of hardcoding the variant here.
+    nonisolated static let modelDescription = "Whisper (small.en)"
+
     /// Everything `transcribe` needs, loaded as a unit from one location.
     /// Single-entry cache by design: two `small.en` models resident would be
     /// ~1 GB of fp16 weights — never useful on the target device.
@@ -32,8 +39,14 @@ actor WhisperMLXTranscriber: Transcriber {
     }
 
     /// Where to load from when no store is injected or the store's download
-    /// isn't usable. `.bundled` keeps the dev path working (weights fetched
-    /// via `scripts/fetch-whisper-model.sh`).
+    /// isn't usable. Defaults to `.bundled`, which since the download-only move
+    /// (2026-06-11) can **no longer load weights** — so this default only yields
+    /// a working model when the *store* resolves to a downloaded `.directory`.
+    /// Callers needing a concrete model without a store (MLXSmoke, device tests)
+    /// pass an explicit downloaded `.directory`. In the app the engine ↔ model
+    /// invariant (Settings gating + launch reconcile) guarantees a Whisper
+    /// session only starts when a `.ready` store resolves to `.directory`, so
+    /// the `.bundled` fallback is never hit on the record path.
     private let fallbackLocation: WhisperModelLocation
 
     /// T1.2b's download owner. Optional: dev builds and unit tests construct

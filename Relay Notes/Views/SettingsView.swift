@@ -5,6 +5,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var tunings: Tunings
+    let whisperStore: WhisperModelStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
@@ -43,18 +44,38 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
 
-                    HStack {
-                        Text("On-device (Whisper)")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text("Coming next")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                    let whisperReady = whisperStore.status == .ready
+                    Button {
+                        tunings.engine = .whisperMLX
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("On-device (Whisper)")
+                                    .foregroundStyle(whisperReady ? .primary : .secondary)
+                                if !whisperReady {
+                                    Text("Download the model below to enable")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                            if tunings.engine == .whisperMLX {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.tint)
+                            }
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .disabled(!whisperReady)
                 } header: {
                     Text("Transcription engine")
                 } footer: {
-                    Text("Apple Speech runs on-device with no model choice. On-device (Whisper) arrives in a follow-up — it'll let you swap in third-party local models via MLX.")
+                    Text("Apple Speech runs on-device with no model choice. On-device (Whisper) transcribes locally via MLX — it becomes selectable once you download its model below.")
+                }
+
+                WhisperModelSection(store: whisperStore) {
+                    tunings.reconcileEngineAvailability(whisperReady: false)
                 }
 
                 Section {
@@ -132,6 +153,6 @@ struct SettingsView: View {
 }
 
 #Preview {
-    SettingsView(tunings: Tunings())
+    SettingsView(tunings: Tunings(), whisperStore: WhisperModelStore())
         .modelContainer(for: Note.self, inMemory: true)
 }

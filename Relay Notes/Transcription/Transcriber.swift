@@ -23,6 +23,12 @@ struct AppleSpeechOptions: Sendable {
 nonisolated protocol TranscriptionSession: Sendable, AnyObject {
     var audioFormat: AVAudioFormat? { get }
     var updates: AsyncStream<String> { get }
+    /// Human-readable label of the engine/model producing this transcript,
+    /// persisted on the `Note` for provenance (e.g. "Apple Speech",
+    /// "Whisper (small.en)"). The session is the authority — it knows which
+    /// model it loaded — so it reports its own identity rather than the caller
+    /// inferring it from the engine enum.
+    var modelDescription: String { get }
     func feed(_ buffer: AVAudioPCMBuffer)
     func finish() async throws -> String
     func cancel() async
