@@ -146,9 +146,25 @@ struct RecorderView: View {
     }
 
     private var tuningSummary: some View {
-        Text("\(modeLabel(viewModel.tunings.sessionMode)) · \(viewModel.tunings.bitrate / 1000) kbps · \(presetLabel(viewModel.tunings.preset))")
+        Text(tuningSummaryText)
             .font(.caption2)
             .foregroundStyle(.tertiary)
+    }
+
+    // Engine-aware: lead with the active engine, then capture mode + bitrate.
+    // Preset only applies to Apple Speech, so it's dropped for Whisper rather
+    // than advertising a dial that engine ignores.
+    private var tuningSummaryText: String {
+        let tunings = viewModel.tunings
+        var parts = [
+            tunings.engine.displayName,
+            modeLabel(tunings.sessionMode),
+            "\(tunings.bitrate / 1000) kbps"
+        ]
+        if tunings.engine == .apple {
+            parts.append(presetLabel(tunings.apple.preset))
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func modeLabel(_ mode: AVAudioSession.Mode) -> String {

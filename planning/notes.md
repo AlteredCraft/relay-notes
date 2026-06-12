@@ -255,6 +255,7 @@ Defaults out of the box: `.default` · 64 kbps · basic preset · no contextual 
 Notes:
 - `.spokenAudio` was initially considered but is documented as a *playback* mode (podcasts, audiobooks), not a recording mode. The right recording-side knob is `.measurement`.
 - Mode + bitrate changes are cheap and address broad audio-quality issues. Preset + biasing address recognizer-side issues. Try cheap first.
+- **Engine scope (since T1.2):** bitrate doesn't affect transcription in the streaming path — both engines transcribe the live PCM, not the saved `.m4a`, so it's a playback/storage dial only. Preset + contextual biasing are Apple-Speech-only and are inert under Whisper. The Settings UI now groups dials accordingly (shared Capture / Storage vs an engine-specific Recognition group — Approach C, see transcription-tuning.md Decisions log + [#3](https://github.com/AlteredCraft/relay-notes/issues/3)).
 - Contextual biasing is documented for `DictationTranscriber`; effect on `SpeechTranscriber` is untested — record outcome here.
 - Tuning state persists across launches via `UserDefaults` (each property has a `didSet` that writes its value; `init` reads back). Reset by deleting and reinstalling the app, or wiring up a "Reset to defaults" button later.
 

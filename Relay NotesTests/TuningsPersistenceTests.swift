@@ -1,4 +1,5 @@
 import Foundation
+import Speech
 import Testing
 @testable import Relay_Notes
 
@@ -82,6 +83,87 @@ struct TuningsPersistenceTests {
 
         tunings.reconcileEngineAvailability(whisperReady: false)
 
+        #expect(tunings.engine == .apple)
+    }
+
+    // MARK: - Per-engine bundles (Approach C)
+
+    @Test func appleBundleDefaultsWhenUnset() {
+        let tunings = Tunings(defaults: makeDefaults())
+        #expect(tunings.apple == AppleSpeechSettings())
+        #expect(tunings.apple.preset == .transcription)
+        #expect(tunings.apple.contextualStringsText.isEmpty)
+    }
+
+    @Test func appleBundleRoundTripsThroughLegacyKeys() {
+        // Persistence must reuse the original flat keys so existing installs
+        // keep their settings — no migration. This pins both the round-trip and
+        // the literal key names the no-migration promise depends on.
+        let defaults = makeDefaults()
+        let writer = Tunings(defaults: defaults)
+        writer.apple.preset = .progressiveTranscription
+        writer.apple.contextualStringsText = "MLX, Qwen"
+
+        #expect(defaults.string(forKey: "tunings.contextualStringsText") == "MLX, Qwen")
+        #expect(defaults.string(forKey: "tunings.preset") == "progressive")
+
+        let reader = Tunings(defaults: defaults)
+        #expect(reader.apple.preset == .progressiveTranscription)
+        #expect(reader.apple.contextualStringsText == "MLX, Qwen")
+    }
+
+    @Test func switchingEnginePreservesAppleBundle() {
+        // Hiding Apple's dials under Whisper must not clear them — they reappear
+        // on switch-back. The bundle lives independent of `engine`.
+        let tunings = Tunings(defaults: makeDefaults())
+        tunings.apple.preset = .transcriptionWithAlternatives
+        tunings.apple.contextualStringsText = "AlteredCraft"
+
+        tunings.engine = .whisperMLX
+        tunings.engine = .apple
+
+        #expect(tunings.apple.preset == .transcriptionWithAlternatives)
+        #expect(tunings.apple.contextualStringsText == "AlteredCraft")
+    }
+
+    @Test func transcriptionOptionsCarryAppleBundle() {
+        let tunings = Tunings(defaults: makeDefaults())
+        tunings.engine = .apple
+        tunings.apple.preset = .transcriptionWithAlternatives
+        tunings.apple.contextualStringsText = "a, b ,,c"
+
+        guard case let .apple(options) = tunings.transcriptionOptions else {
+            Issue.record("Expected .apple options when engine is .apple")
+            return
+        }
+        #expect(options.preset == .transcriptionWithAlternatives)
+        #expect(options.contextualStrings == ["a", "b", "c"])  // trimmed, empties dropped
+    }
+
+    @Test func whisperEngineIgnoresAppleBundle() {
+        // Even with Apple dials set, selecting Whisper yields bare `.whisperMLX`
+        // — the dials are inert, which is exactly why they're hidden in the UI.
+        let tunings = Tunings(defaults: makeDefaults())
+        tunings.apple.preset = .progressiveTranscription
+        tunings.apple.contextualStringsText = "ignored"
+        tunings.engine = .whisperMLX
+
+        guard case .whisperMLX = tunings.transcriptionOptions else {
+            Issue.record("Expected .whisperMLX options when engine is .whisperMLX")
+            return
+        }
+    }
+
+    @Test func resetToDefaultsClearsBundles() {
+        let tunings = Tunings(defaults: makeDefaults())
+        tunings.apple.preset = .progressiveTranscription
+        tunings.apple.contextualStringsText = "MLX"
+        tunings.engine = .whisperMLX
+
+        tunings.resetToDefaults()
+
+        #expect(tunings.apple == AppleSpeechSettings())
+        #expect(tunings.whisper == WhisperSettings())
         #expect(tunings.engine == .apple)
     }
 }

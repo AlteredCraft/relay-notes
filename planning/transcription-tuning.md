@@ -34,6 +34,8 @@ All four are runtime-tunable from the in-app **Tuning sheet** (slider icon, top-
 | 3 | Transcription preset | `SpeechTranscriber.Preset` | `transcription` / `transcriptionWithAlternatives` / `progressiveTranscription` | `transcription` |
 | 4 | Contextual biasing | `AnalysisContext.contextualStrings[.general]` | Comma-separated words/phrases | empty |
 
+**Engine relevance (since T1.2).** Dials 1–2 are *capture / storage* — they shape the recorded audio and apply to whichever engine transcribes it (and bitrate only affects the saved `.m4a` you play back, not transcription, since both engines work from the live PCM). Dials 3–4 are *Apple-Speech-specific* recognition settings — `SpeechTranscriber` concepts with no Whisper analog wired — so they have **no effect** when on-device Whisper is selected. The Settings sheet reflects this (Approach C): shared **Capture** and **Storage & playback** groups always show, while an engine-specific **Recognition** group swaps with the selected engine (Whisper exposes no decode dials in v1). See the Decisions log entry for 2026-06-12 / [issue #3](https://github.com/AlteredCraft/relay-notes/issues/3).
+
 There are also **non-tunable** knobs we set in code — see "Hidden knobs" below.
 
 ---
@@ -187,7 +189,7 @@ Neither is user-exposed — there's only one valid value for each in v1. They li
 - Stored in **Application Support**, not Caches (Caches can be evicted under storage pressure, and a 250 MB redownload from a coffee shop is bad). Excluded from iCloud backup.
 - Pre-download supported from the Settings sheet — preserves the offline-recording promise once installed: zero network calls during a recording session.
 - Delete affordance also in Settings, in case the user wants the space back.
-- Recording is blocked with a clear message if Whisper is selected but the model isn't downloaded.
+- Whisper can't be *selected* without its model on disk (gating), rather than blocking at record time — the engine row is disabled until the model is ready, and deleting the model reverts the selection to Apple. See `Tunings.reconcileEngineAvailability` and CHANGE_LOG 2026-06-11.
 
 ---
 
@@ -214,6 +216,7 @@ Neither is user-exposed — there's only one valid value for each in v1. They li
 | 2026-06-11 | Long audio: timestamp-guided seek loop, model-agnostic driver (T1.2d-1) | `padOrTrim` truncates at Whisper's architectural 30-s window — surfaced as a silent-truncation risk during T1.2c device validation. Ported the reference's seek loop with the windowing split model-agnostic (`AudioWindow` + `ChunkedTranscription`) so a future local model with different constraints swaps in a different window spec, not a different loop |
 | 2026-06-11 | Timestamp rules ported with OpenAI semantics, not mlx-examples' | The mlx-examples `ApplyTimestampRules` monotonicity rule has an index-vs-value bug that makes it a no-op (masks `timestamp_begin : <small index>` — an empty range). Ported `openai/whisper`'s version: mask timestamp *values* below the last emitted one |
 | 2026-06-11 | `condition_on_previous_text` not ported (windows decode independently) | It's the documented repetition-loop failure source, and the reference's recovery from it is temperature fallback — machinery our greedy-only decode doesn't have. Independent windows trade a little cross-boundary consistency for immunity to the failure mode |
+| 2026-06-12 | Settings + `Tunings` restructured into shared vs engine-specific groups (Approach C) | Built when Apple was the only engine; with two engines, the Apple-only dials (preset, contextual biasing) rendered as live no-ops under Whisper. Per-engine recognition settings now live in bundles (`AppleSpeechSettings` / `WhisperSettings`) mirroring the `TranscriptionOptions` sum type; the UI swaps a per-engine **Recognition** group while **Capture** / **Storage & playback** stay shared. UserDefaults keys unchanged (no migration). Sets up T2/T3 to add an engine via a bundle + a section + a switch arm, not new flat fields. See [issue #3](https://github.com/AlteredCraft/relay-notes/issues/3) |
 
 ---
 
