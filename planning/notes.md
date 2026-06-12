@@ -249,3 +249,7 @@ Per-knob outcomes observed when turning the Apple-Speech dials. *What each dial 
 | 4 | Contextual biasing | comma-separated domain words | not started | — |
 
 Notes: mode + bitrate are cheap capture/storage knobs; preset + biasing are Apple-Speech-only recognizer knobs (inert under Whisper). Tuning state persists via `UserDefaults` (per-property `didSet`; `init` reads back). Engine-scope detail in transcription-tuning.md § "Engine relevance."
+
+### Engine comparison — Apple Speech vs Whisper (field trials)
+
+- **2026-06-12** — Field-trial impression: Apple Speech is performing at least as well as Whisper (`small.en`), possibly better. Qualitative, single-observer, real-use dictation — not a measured WER on a fixed corpus. Worth noting because Apple is the cheaper path (no 481 MB weights download, no MLX memory footprint); if the on-device accuracy gap stays this small in daily use, it weakens the case for Whisper as the default engine. Revisit with a controlled A/B (same audio through both engines) before drawing a firm conclusion.
