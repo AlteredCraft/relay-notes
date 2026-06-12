@@ -21,6 +21,8 @@ struct WhisperModelSection: View {
     /// `.whisperMLX` engine selection). Defaults to a no-op for previews.
     var onDeleted: () -> Void = {}
 
+    @State private var showDeleteConfirmation = false
+
     private static let logger = Logger(
         subsystem: "alteredcraft.Relay-Notes",
         category: "WhisperModelStore"
@@ -33,6 +35,12 @@ struct WhisperModelSection: View {
             Text("On-device model")
         } footer: {
             Text("Whisper transcribes fully on-device. The model is about 480 MB and downloads once — delete it anytime to reclaim the space.")
+        }
+        .alert("Delete the on-device model?", isPresented: $showDeleteConfirmation) {
+            Button("Delete", role: .destructive) { delete() }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("You'll need to download it again (about 480 MB) to use on-device Whisper.")
         }
     }
 
@@ -56,7 +64,7 @@ struct WhisperModelSection: View {
                 Label("Installed", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
                 Spacer()
-                Button("Delete", role: .destructive) { delete() }
+                Button("Delete", role: .destructive) { showDeleteConfirmation = true }
             }
 
         case let .failed(reason):
