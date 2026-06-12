@@ -147,6 +147,7 @@ nonisolated final class AppleSpeechTranscriber: Transcriber {
 private final class AppleSpeechSession: TranscriptionSession {
     let audioFormat: AVAudioFormat?
     let updates: AsyncStream<String>
+    let emitsLivePartials = true
     var modelDescription: String { TranscriptionEngine.apple.displayName }
 
     private let analyzer: SpeechAnalyzer

@@ -7,15 +7,32 @@ struct RecorderView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            partialTranscript
+            transcriptArea
             statusText
             recordButton
             tuningSummary
         }
     }
 
+    /// While recording, engines that stream partials (Apple) show the live
+    /// transcript card; engines that don't (Whisper, which decodes once at
+    /// finish) show a placeholder card instead of a perpetually blank one.
     @ViewBuilder
-    private var partialTranscript: some View {
+    private var transcriptArea: some View {
+        switch viewModel.state {
+        case .recording, .paused:
+            if viewModel.emitsLivePartials {
+                livePartialCard
+            } else {
+                whisperPlaceholderCard
+            }
+        default:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var livePartialCard: some View {
         if let partial = livePartial, !partial.isEmpty {
             ScrollView {
                 Text(partial)
@@ -30,6 +47,26 @@ struct RecorderView: View {
             .padding(.horizontal)
             .transition(.opacity)
         }
+    }
+
+    private var whisperPlaceholderCard: some View {
+        VStack(spacing: 10) {
+            Text("Transcript will appear when you stop recording.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+            AudioLevelMeter(level: viewModel.audioLevel)
+                .padding(.horizontal, 24)
+            Text(RecorderViewModel.formatElapsed(viewModel.elapsed))
+                .font(.footnote.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal)
+        .transition(.opacity)
     }
 
     @ViewBuilder
@@ -50,7 +87,10 @@ struct RecorderView: View {
         case .finalizing:
             HStack(spacing: 8) {
                 ProgressView()
-                Text("Finalizing…")
+                // For Whisper the decode happens here, so "Transcribing…" is the
+                // honest label; Apple has already streamed its text and is just
+                // closing out, so "Finalizing…".
+                Text(viewModel.emitsLivePartials ? "Finalizing…" : "Transcribing…")
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
@@ -126,5 +166,27 @@ struct RecorderView: View {
         if preset == .transcriptionWithAlternatives { return "alts" }
         if preset == .progressiveTranscription { return "progressive" }
         return "custom"
+    }
+}
+
+/// Horizontal level bar for the Whisper placeholder — fills proportionally to a
+/// normalized 0...1 mic level so the user can see they're being heard while no
+/// live transcript is available.
+private struct AudioLevelMeter: View {
+    let level: Float
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(.quaternary)
+                Capsule()
+                    .fill(Color.accentColor)
+                    .frame(width: max(2, geometry.size.width * CGFloat(min(max(level, 0), 1))))
+            }
+        }
+        .frame(height: 6)
+        .animation(.linear(duration: 0.08), value: level)
+        .accessibilityHidden(true)
     }
 }

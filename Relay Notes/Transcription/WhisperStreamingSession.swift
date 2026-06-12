@@ -23,6 +23,10 @@ nonisolated final class WhisperStreamingSession: TranscriptionSession {
 
     let updates: AsyncStream<String>
 
+    /// Zero partials by design (see the type doc) — the recorder shows a
+    /// placeholder card while Whisper records.
+    let emitsLivePartials = false
+
     var modelDescription: String { WhisperMLXTranscriber.modelDescription }
 
     private let updatesContinuation: AsyncStream<String>.Continuation

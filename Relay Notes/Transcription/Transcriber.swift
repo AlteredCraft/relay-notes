@@ -23,6 +23,13 @@ struct AppleSpeechOptions: Sendable {
 nonisolated protocol TranscriptionSession: Sendable, AnyObject {
     var audioFormat: AVAudioFormat? { get }
     var updates: AsyncStream<String> { get }
+    /// Whether this session streams incremental partials through `updates`
+    /// while recording. The session is the authority — it knows its own decode
+    /// model — so the recorder asks it rather than inferring from the engine
+    /// enum. `false` (e.g. Whisper, which accumulates and decodes once at
+    /// `finish()`) tells `RecorderView` to show a placeholder instead of a
+    /// perpetually blank live transcript card (T1.2f).
+    var emitsLivePartials: Bool { get }
     /// Human-readable label of the engine/model producing this transcript,
     /// persisted on the `Note` for provenance (e.g. "Apple Speech",
     /// "Whisper (small.en)"). The session is the authority — it knows which
