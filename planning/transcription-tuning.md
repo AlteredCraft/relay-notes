@@ -1,7 +1,7 @@
 ---
 title: Relay Notes - Transcription Tuning
 date: 2026-06-08
-updated: 2026-06-10
+updated: 2026-06-12
 tags:
   - altered-craft
   - voice
@@ -10,228 +10,177 @@ tags:
   - tuning
   - apple-speech
   - speech-analyzer
+  - mlx
+  - whisper
 status: living
 created_by: build-log
 ---
 
 # Relay Notes: Transcription Tuning
 
-Companion to [notes.md](./notes.md). Tracks every knob that affects transcription accuracy and live UX, what each one does, what we picked, and why. Updated as we test on real audio.
+Companion to [notes.md](./notes.md). Explains every knob that affects transcription — what it does, what we picked, and **why**. The empirical per-knob outcomes live in [notes.md Appendix B](./notes.md#b-v11-accuracy-tuning-empirical-log); the dated decision record is the [Appendix](#appendix-decisions-log) at the bottom.
 
 > [!info] Scope
-> v1 uses Apple's on-device `SpeechTranscriber` (via `SpeechAnalyzer`) — Tier 1 below. Tier 2 (Local ASR via MLX, Whisper first) is **next up as T1** in [notes.md § Transcription upgrades](./notes.md#transcription-upgrades-ahead-of-l-stages). Tier 3 (Cloud STT, Cohere / Gemini) follows. Each provider gets its own section here as it comes online.
+> Two on-device engines are live: **Tier 1 — Apple `SpeechTranscriber`** (via `SpeechAnalyzer`) and **Tier 2 — Whisper `small.en` via raw `mlx-swift`** (shipped + device-validated through 2026-06-12). **Tier 3 — Cloud STT** (Cohere / Gemini) is future (T3 in notes.md). Each engine's tunable surface differs — see "Engine relevance" below.
 
 ---
 
 ## The dials, at a glance
 
-All four are runtime-tunable from the in-app **Tuning sheet** (slider icon, top-right of the navigation bar). State persists across launches via `UserDefaults` and is mediated by `Tunings` (`Recording/Tunings.swift`).
+Runtime-tunable from the in-app **Settings sheet** (slider icon, top-right). State persists via `UserDefaults`, mediated by `Tunings` (`Recording/Tunings.swift`).
 
-| # | Dial | Layer | Range / values | Current default |
+| # | Dial | Layer | Range / values | Default |
 |---|---|---|---|---|
 | 1 | Audio session mode | `AVAudioSession.Mode` | `.default` / `.measurement` / `.voiceChat` / `.videoRecording` | `.default` |
 | 2 | AAC bitrate | Encoder (`AVAudioFile` AAC settings) | 32 / 64 / 96 / 128 / 192 kbps | 64 kbps |
 | 3 | Transcription preset | `SpeechTranscriber.Preset` | `transcription` / `transcriptionWithAlternatives` / `progressiveTranscription` | `transcription` |
-| 4 | Contextual biasing | `AnalysisContext.contextualStrings[.general]` | Comma-separated words/phrases | empty |
+| 4 | Contextual biasing | `AnalysisContext.contextualStrings[.general]` | comma-separated words/phrases | empty |
 
-**Engine relevance (since T1.2).** Dials 1–2 are *capture / storage* — they shape the recorded audio and apply to whichever engine transcribes it (and bitrate only affects the saved `.m4a` you play back, not transcription, since both engines work from the live PCM). Dials 3–4 are *Apple-Speech-specific* recognition settings — `SpeechTranscriber` concepts with no Whisper analog wired — so they have **no effect** when on-device Whisper is selected. The Settings sheet reflects this (Approach C): shared **Capture** and **Storage & playback** groups always show, while an engine-specific **Recognition** group swaps with the selected engine (Whisper exposes no decode dials in v1). See the Decisions log entry for 2026-06-12 / [issue #3](https://github.com/AlteredCraft/relay-notes/issues/3).
+**Engine relevance (Approach C).** Dials 1–2 are *capture / storage* — they shape the recorded audio and apply to whichever engine transcribes it (and bitrate only affects the saved `.m4a` you play back, **not** transcription, since both engines work from the live PCM). Dials 3–4 are *Apple-Speech-specific* recognition settings — `SpeechTranscriber` concepts with no Whisper analog wired — so they have **no effect** under Whisper. The Settings sheet mirrors this: shared **Capture** + **Storage & playback** groups always show, while an engine-specific **Recognition** group swaps with the selection (Whisper exposes no decode dials in v1). Per-engine settings live in bundles (`AppleSpeechSettings` / `WhisperSettings`) on `Tunings`. See the [Decisions log](#appendix-decisions-log) 2026-06-12 / [issue #3](https://github.com/AlteredCraft/relay-notes/issues/3).
 
-There are also **non-tunable** knobs we set in code — see "Hidden knobs" below.
+There are also **non-tunable** knobs set in code — see "Hidden knobs."
 
 ---
 
-## 1. Audio session mode
+## Tier 1 dials (Apple Speech) — what & why
 
-**What it does.** Selects how iOS preprocesses the mic input before our code sees it.
+### 1. Audio session mode
+
+Selects how iOS preprocesses the mic before our code sees it.
 
 | Mode | Behavior | Use for |
 |---|---|---|
-| `.default` | Standard processing — AGC (auto-gain control), noise suppression | General notes, anything you also want to play back comfortably |
-| `.measurement` | Raw signal — no AGC, no noise gate | STT-only testing in quiet rooms; *not* good for playback (noticeably quieter) |
-| `.voiceChat` | VoIP echo cancellation, AGC | Talking-to-someone scenarios |
-| `.videoRecording` | Camera-style audio processing | Recording with camera-like dynamics |
+| `.default` | AGC + noise suppression | General notes; comfortable playback |
+| `.measurement` | Raw — no AGC, no noise gate | STT-only testing in quiet rooms (quieter playback) |
+| `.voiceChat` | VoIP echo cancellation + AGC | Talking-to-someone scenarios |
+| `.videoRecording` | Camera-style processing | Camera-like dynamics |
 
-**Default: `.default`.** Initially shipped as `.measurement` based on a hypothesis that raw signal would help STT in noisy rooms. Real-world testing showed playback was uncomfortably quiet with no observable STT win. Reverted to `.default` on 2026-06-08. `.measurement` stays available for opt-in STT-focused testing.
+**Default `.default`.** Shipped first as `.measurement` (hypothesis: raw signal helps STT in noise); real-world testing showed quiet playback with no observable STT win. Reverted 2026-06-08. **Cheap** knob — try first when audio quality feels off.
 
-**Knob cost: cheap.** Try this first when audio quality feels off.
+### 2. AAC bitrate
 
----
+Encoding bitrate for the `.m4a` written by `LiveAudioEngine`. **Default 64 kbps mono** (~480 KB/min). Does **not** affect transcription — both engines transcribe the live PCM, not the saved file — so this is a playback/storage dial. Bump to 96–128 kbps for long-form keepers. **Cheap.**
 
-## 2. AAC bitrate
+### 3. Transcription preset
 
-**What it does.** Encoding bitrate for the `.m4a` file written to disk by `LiveAudioEngine`. Lower = smaller files, less audio fidelity. Higher = bigger files, more fidelity.
-
-**Default: 64 kbps mono.** Voice-grade default — ~480 KB per minute. Higher bitrates have not yet been shown to improve STT accuracy in our tests; the transcriber works from PCM buffers in the streaming path anyway (see "Hidden knobs"), so file bitrate primarily affects *playback* fidelity in `NoteDetailView`, not transcription.
-
-**Knob cost: cheap.** Worth bumping to 96–128 kbps if you start using these as long-form recordings rather than throwaway notes.
-
----
-
-## 3. Transcription preset
-
-This is the highest-leverage knob, and the one with the clearest accuracy tradeoff.
-
-Per Apple's docs, the presets are sugar over three option sets: `transcriptionOptions`, `reportingOptions`, `attributeOptions`. The interesting bits for us:
+Highest-leverage Apple dial, clearest accuracy tradeoff. The presets are sugar over `transcriptionOptions` / `reportingOptions` / `attributeOptions`:
 
 | Preset | `volatileResults` | `fastResults` | Notes |
 |---|---|---|---|
-| `transcription` | No | No | Designed for accuracy. No live partials. Final results only. |
-| `transcriptionWithAlternatives` | No | No | Same as above + per-word alternates (for a future tap-to-correct UX) |
-| `progressiveTranscription` | Yes | Yes | Live partials, smaller context window → lower accuracy by design |
+| `transcription` | No | No | Accuracy-first; final results only |
+| `transcriptionWithAlternatives` | No | No | + per-word alternates (future tap-to-correct UX) |
+| `progressiveTranscription` | Yes | Yes | Live partials, smaller context → lower accuracy by design |
 
-**Default: `transcription`.** We want the most accurate final transcript on a stored note. We do *not* accept the `fastResults` accuracy hit just to get partials, because…
+**Default `transcription`** — most accurate stored transcript, and we get live partials anyway via the streaming override (below) without the `fastResults` hit. Use `transcriptionWithAlternatives` if/when a correction UI lands; avoid `progressiveTranscription` unless you specifically want its lower-latency/lower-accuracy character. **Medium** cost.
 
-**See "Streaming override" below.** In the streaming path we union `.volatileResults` into the preset's reporting options regardless of which preset the user picks. This gives live partials without dragging in `fastResults`. So picking `transcription` in the UI now gets you live word-by-word *and* the accuracy floor.
+### 4. Contextual biasing
 
-**Knob cost: medium.** Use `transcriptionWithAlternatives` if/when we build a correction UI. Avoid `progressiveTranscription` unless you specifically want the lower-latency-lower-accuracy character of the full progressive preset.
-
----
-
-## 4. Contextual biasing
-
-**What it does.** Whitelist of domain words/phrases passed to `AnalysisContext.contextualStrings[.general]` to nudge the recognizer toward them.
-
-**Default: empty.**
-
-**Status: untested.** Documented for `DictationTranscriber`; effect on `SpeechTranscriber` is empirically unclear. Worth a structured A/B with proper-noun-heavy text (people's names, jargon: `AlteredCraft`, `MLX`, `Qwen`) once we have a stable test corpus.
-
-**Knob cost: high effort to validate, low effort to set.** Edit the comma-separated text field.
+Whitelist of domain words/phrases to `AnalysisContext.contextualStrings[.general]`. **Default empty. Status: untested** — documented for `DictationTranscriber`, effect on `SpeechTranscriber` empirically unclear. Worth a structured A/B on proper-noun-heavy text (`AlteredCraft`, `MLX`, `Qwen`) once there's a stable corpus. **Low effort to set, high effort to validate.**
 
 ---
 
-## Hidden knobs (set in code, not in the UI)
-
-These also affect quality but we don't expose them.
+## Hidden knobs (set in code, not the UI)
 
 ### Streaming override: union `.volatileResults` into the user's preset
 
-Added 2026-06-08 in `AppleSpeechTranscriber.makeStreamingSession`. Builds the streaming `SpeechTranscriber` from the user's preset's options *plus* `.volatileResults`:
+In `AppleSpeechTranscriber.makeStreamingSession`, the streaming `SpeechTranscriber` is built from the user's preset options *plus* `.volatileResults`:
 
 ```swift
-SpeechTranscriber(
-    locale: supportedLocale,
-    transcriptionOptions: options.preset.transcriptionOptions,
-    reportingOptions: options.preset.reportingOptions.union([.volatileResults]),
-    attributeOptions: options.preset.attributeOptions
-)
+reportingOptions: options.preset.reportingOptions.union([.volatileResults])
 ```
 
-**Why.** Without `.volatileResults`, the basic `.transcription` preset emits no intermediate results — the live partial card in `RecorderView` stays empty during recording. Switching to `.progressiveTranscription` to fix that brings `fastResults` along for the ride, which dings accuracy on every result (including the final). Unioning just `.volatileResults` gives partials without `fastResults`. Best of both.
-
-**Side effect on accuracy.** `volatileResults` only adds tentative results during the volatile range; finalized results are unchanged. The transcribed string we persist to `Note.transcript` comes from finalized chunks only, so accuracy of the *stored* transcript should match the preset's intended accuracy.
+**Why.** Without it, basic `.transcription` emits no intermediate results — the live partial card stays empty. Switching to `.progressiveTranscription` to fix that drags in `fastResults`, which dings accuracy on every result including the final. Unioning just `.volatileResults` gives partials without `fastResults`. The persisted `Note.transcript` comes from finalized chunks only, so stored accuracy matches the preset's intent.
 
 ### Sample-rate conversion: `AVAudioConverter` at default quality
 
-`LiveAudioEngine` runs tap buffers (typically 48 kHz hardware) through `AVAudioConverter` to the analyzer's preferred format (typically 16 kHz mono Float32 from `SpeechAnalyzer.bestAvailableAudioFormat`). The converter currently uses its default settings.
-
-**Why this matters.** In the file-based path (`AppleSpeechTranscriber.transcribe(_:options:)`), `SpeechAnalyzer.analyzeSequence(from:)` does its own internal decoding/resampling with whatever quality it considers appropriate. In the streaming path, *we* are doing the resampling, and the default `AVAudioConverter` quality is medium.
-
-**Hypothesis to test.** Setting `converter.sampleRateConverterQuality = .max` may close any subtle quality gap between streaming and file-based final transcripts. Untested. If we ever observe a streaming-only accuracy regression, this is knob #1 to turn.
+`LiveAudioEngine` runs tap buffers (typically 48 kHz hardware) through `AVAudioConverter` to the analyzer's format (typically 16 kHz mono Float32). Default (medium) quality. **Hypothesis to test:** `converter.sampleRateConverterQuality = .max` may close any subtle streaming-vs-file gap. Untested — knob #1 to turn if a streaming-only regression ever appears.
 
 ### Buffer size: 4096 frames
 
-`inputNode.installTap(onBus: 0, bufferSize: 4096, format: ...)`. At 48 kHz that's ~85 ms per buffer. The analyzer is supposed to be agnostic to chunk boundaries within reason. Untested whether smaller (more responsive) or larger (less overhead) changes anything.
+`installTap(bufferSize: 4096)` → ~85 ms/buffer at 48 kHz. The analyzer is meant to be agnostic to chunk boundaries within reason. Untested whether smaller (more responsive) or larger (less overhead) changes anything.
 
 ---
 
 ## Streaming vs file-based: should we expect different accuracy?
 
-This section is about **Tier 1 (Apple Speech)** — where two transcription paths share one `AppleSpeechTranscriber`:
+**Tier 1 (Apple)** shares one `AppleSpeechTranscriber` across two paths:
 
-1. **Streaming** (`makeStreamingSession`) — used by the recorder. PCM buffers fed live into `SpeechAnalyzer.start(inputSequence:)` while recording.
-2. **File-based** (`transcribe(_:options:)`) — used by nothing in the app right now. Reserved for the future cloud STT path and for re-transcribing existing notes.
+1. **Streaming** (`makeStreamingSession`) — used by the recorder; PCM fed live into `SpeechAnalyzer.start(inputSequence:)`.
+2. **File-based** (`transcribe(_:options:)`) — used by nothing today; reserved for cloud STT and re-transcribe.
 
-**In theory** they converge on the same finalized transcript for the same preset, because finalization is the same operation in both cases — analyzer settles its volatile range, emits final results.
+In theory both converge on the same finalized transcript (finalization is the same op). In practice two subtleties favor file-based: it lets Apple handle resampling internally (vs our `AVAudioConverter`), and it sees one continuous read vs chunked `AnalyzerInput`. **Mitigation:** the stored AAC is identical in both paths, so a stored note can always be re-transcribed via the file-based path later — worth a "re-transcribe" debug action if divergence shows up in real use.
 
-**In practice**, two subtleties favor file-based:
-
-- File-based lets Apple handle resampling internally. Streaming uses our `AVAudioConverter`. See "Sample-rate conversion" above.
-- Streaming sees chunked input (one `AnalyzerInput` per ~85 ms buffer). File-based sees one continuous read. The analyzer claims to handle this, but it's an extra surface.
-
-**Mitigation.** Storage of the audio file is identical in both paths — same AAC m4a written by `LiveAudioEngine`. So we can always re-transcribe a stored note via the file-based path later if we suspect the streaming pass mis-transcribed something. Worth building a "re-transcribe" debug action if we start seeing divergence in real use.
-
-### Tier 2 (Whisper) — different shape
-
-For `WhisperMLXTranscriber` the streaming/file-based distinction collapses to one path: buffers fed via `feed(_:)` accumulate in memory until `finish()`, at which point a single file-style decode runs over the whole recording. There's no concept of volatile-then-final because there are no intermediate emits. Net: Tier 2 is "file-based-pretending-to-be-streaming" for protocol-shape compatibility. The protocol's `transcribe(_:options:)` file-based method can also be implemented to decode an existing audio URL directly — useful if we later want a "re-transcribe with Whisper" debug action against notes captured under Apple Speech.
+**Tier 2 (Whisper)** collapses the distinction to one path: buffers fed via `feed(_:)` accumulate in memory until `finish()`, then a single file-style decode runs over the whole recording. No volatile-then-final because there are no intermediate emits — it's "file-based pretending to be streaming" for protocol-shape compatibility. The file-based `transcribe(_:options:)` can likewise decode an existing URL — the basis for a future "re-transcribe with Whisper" action.
 
 ---
 
-## Tier 2 — Local ASR via MLX (Whisper)
+## Tier 2 — Local Whisper via MLX
 
-**Status: T1.1 shipped (file-based transcribe on device, 2026-06-10), T1.2 in progress.** Engine is `WhisperMLXTranscriber`, built on `mlx-swift` (raw — *not* WhisperKit; see "Decisions log" 2026-06-10 for why). Default model `mlx-community/whisper-small.en-mlx` (~250 MB downloaded → ~481 MB FP16 resident) — empirically validated 2026-06-10 to load and run on iPhone 15 Pro Max without the `increased-memory-limit` entitlement, removing the prior free-tier-sideload watch-item. The dials and defaults below are still the *plan* until T1.2 lands the recorder wiring + download UX — empirical outcomes get appended once that ships.
+**Status: shipped + device-validated** (T1.0–T1.2, through 2026-06-12). Engine `WhisperMLXTranscriber`, built on raw `mlx-swift` (*not* WhisperKit — see Decisions log 2026-06-10). The model is **downloaded from `mlx-community/whisper-small.en-fp16`** (`model.safetensors`, ~481 MB FP16, pinned commit + SHA-verified) into Application Support on first use — weights are no longer bundled. Validated 2026-06-10 to load + run on the iPhone 15 Pro Max without the `increased-memory-limit` entitlement. Quantified load/decode/memory/battery numbers are still **T1.3**.
 
-### The dials
+### Model-side choices (not user-exposed — one valid value each in v1)
 
-| # | Dial | Range / values | Current default |
-|---|---|---|---|
-| 1 | Model variant | `whisper-small.en` only — `tiny.en` was removed 2026-06-10 (T1.2a) after on-device validation showed `small.en` runs without the increased-memory-limit entitlement. No UI picker; if a second variant ever returns we re-add the enum | `small.en` |
-| 2 | Language | `en` only — Whisper assets are the English-only build (`gpt2.tiktoken` vocab + English-only special tokens). Multilingual would require a different vocab + decode path | `en` |
+- **Model variant:** `whisper-small.en` only. `tiny.en` was removed 2026-06-10 (T1.2a) once `small.en` validated without the entitlement; if a second variant ever returns we re-add the enum.
+- **Language:** `en` only — the English-only build (`gpt2.tiktoken` vocab + English special tokens). Multilingual would need a different vocab + decode path.
 
-Neither is user-exposed — there's only one valid value for each in v1. They live in the dials table because they're the load-bearing model-side choices.
+### Hidden defaults (the Whisper port's load-bearing choices)
 
-### Hidden defaults
+- **In-memory PCM, decode once at `finish()`.** ~115 MB resident for a 30-min note on the 15 Pro Max — comfortable on 8 GB, bound is real but not load-bearing for v1 notes. Revisit trigger in [#1](https://github.com/AlteredCraft/relay-notes/issues/1).
+- **Greedy decode (beam size 1).** Beam search costs latency for a small accuracy bump; not worth it until T1.3 numbers anchor the tradeoff.
+- **Long audio: timestamp-guided 30-s seek loop (T1.2d-1).** Whisper's encoder takes exactly 30 s; longer audio is walked window-by-window, each window restarting at the previous one's last *complete* segment boundary (from the decoder's timestamp tokens) so words aren't cut at arbitrary 30-s edges. The driver (`ChunkedTranscription` + `AudioWindow`) is model-agnostic; the timestamp parsing (`WhisperDecoding.parseWindow`) is Whisper-specific.
+- **Silence skip: `no_speech_threshold = 0.6`, overridden by `avg_logprob > -1.0`.** Drops a window whose `<|nospeech|>` prob beats 0.6 — unless the decode is confident anyway (protects quiet-but-real speech). Reference defaults; revisit with dogfood data (voice notes have long pauses, so this runs often).
+- **`max_initial_timestamp = 1.0 s`.** Each window's first segment must start within 1 s — reference default; stops the model "explaining away" a window start as silence.
+- **`condition_on_previous_text`: not ported.** The reference feeds each window's text into the next window's prompt for consistency, but it's the known repetition-loop failure source and its safety net is the temperature-fallback machinery we don't have (greedy-only). Windows decode independently. Revisit only with dogfood evidence of boundary inconsistency.
+- **No streaming partials.** `updates` emits zero values during `feed` and exactly one final on `finish()`. Chunked partials are a follow-up, gated on the in-memory bound (issue #1) or the no-partials UX feeling bad in dogfood.
 
-- **In-memory PCM buffer during `feed`, decode once at `finish()`.** Notes up to ~30 min on the iPhone 15 Pro Max use roughly 115 MB of resident PCM — comfortable on 8 GB. Bound is real, just not load-bearing for v1-style notes. Revisit trigger and alternative buffer strategies tracked in [#1](https://github.com/AlteredCraft/relay-notes/issues/1).
-- **Greedy decoding (beam size 1) for the first cut.** Beam search costs latency for a small accuracy bump; not worth the complexity until we have on-device numbers to anchor the tradeoff.
-- **Long audio: timestamp-guided 30-s seek loop (T1.2d-1).** Whisper's encoder takes exactly 30 s; longer audio is walked window-by-window, restarting each window at the previous one's last *complete* segment boundary (read from the decoder's timestamp tokens) so words aren't cut at arbitrary 30-s edges. The window-walking driver (`ChunkedTranscription` + `AudioWindow`) is model-agnostic; the timestamp parsing is Whisper-specific (`WhisperDecoding.parseWindow`).
-- **Silence skip: `no_speech_threshold = 0.6`, overridden by `avg_logprob > -1.0`.** A window whose `<|nospeech|>` probability beats 0.6 is dropped as silence — unless the decode is confident anyway, which protects quiet-but-real speech. Both values are the reference defaults; revisit with dogfood data (voice notes have long pauses, so this path runs often).
-- **`max_initial_timestamp = 1.0 s`.** The first segment of each window must start within 1 s — reference default; stops the model from "explaining away" a window's start as silence.
-- **`condition_on_previous_text`: not ported.** The reference feeds each window's text into the next window's prompt for cross-window consistency, but it's also the known repetition-loop failure source and its safety net is the temperature-fallback machinery we don't have (greedy-only). Windows decode independently. Revisit only with dogfood evidence of boundary inconsistency.
-- **No streaming partials in the first cut.** The `TranscriptionSession.updates` stream returned by `WhisperMLXTranscriber.makeStreamingSession` emits zero values during `feed` and exactly one final value on `finish()`. Chunked streaming partials are a follow-up, gated on the in-memory bound becoming a real problem (issue #1) or the no-partials UX feeling bad in dogfood.
+### Recording UX while Whisper is selected (shipped T1.2f)
 
-### Recording UX while Whisper is the selected engine
-
-- The live partial transcript card is **replaced** by a placeholder: "Transcript will appear when you stop recording." + elapsed-time label + audio level meter.
-- After the user stops, the existing `.finalizing` state runs the full-file decode. UI shows a spinner with "Transcribing…" — no progress percentage (Whisper doesn't expose one cleanly without chunking).
+Whisper emits zero partials, so `RecorderView` replaces the live transcript card with a placeholder — "Transcript will appear when you stop recording." + a live mic-level meter + an elapsed-time label. On stop, `.finalizing` runs the full-file decode behind a "Transcribing…" spinner (no percentage — no clean progress signal without chunking).
 
 ### Model lifecycle
 
-- Stored in **Application Support**, not Caches (Caches can be evicted under storage pressure, and a 250 MB redownload from a coffee shop is bad). Excluded from iCloud backup.
-- Pre-download supported from the Settings sheet — preserves the offline-recording promise once installed: zero network calls during a recording session.
-- Delete affordance also in Settings, in case the user wants the space back.
-- Whisper can't be *selected* without its model on disk (gating), rather than blocking at record time — the engine row is disabled until the model is ready, and deleting the model reverts the selection to Apple. See `Tunings.reconcileEngineAvailability` and CHANGE_LOG 2026-06-11.
-
----
-
-## Decisions log
-
-| Date | Decision | Why |
-|---|---|---|
-| 2026-06-08 | Default audio session mode: `.measurement` → `.default` | `.measurement` produced uncomfortably quiet playback with no observable STT win |
-| 2026-06-08 | Default AAC bitrate: 64 kbps mono | Voice-grade default; balances size and fidelity for note-taking |
-| 2026-06-08 | Default transcription preset: `.transcription` | Maximize accuracy of the stored transcript. Live UX is handled by the streaming override, not the preset choice |
-| 2026-06-08 | Streaming session unions `.volatileResults` into user's preset | Get live partials without dragging in `fastResults` (which would reduce accuracy) |
-| 2026-06-08 | `AVAudioConverter` left at default quality | Default works; revisit if we see streaming-only accuracy regressions |
-| 2026-06-08 | Contextual biasing: empty default | Effect on `SpeechTranscriber` (vs `DictationTranscriber`) is undocumented and untested. Off until we have a test corpus |
-| 2026-06-10 | Tier 2 engine: raw `mlx-swift`, not WhisperKit | Keeps the app to one ML runtime (avoiding Core ML + MLX when L1 lands); pays the MLX-on-iOS learning cost on a smaller problem than an LLM; transferable to Parakeet-MLX / Qwen3-ASR follow-ups. Escape valve to WhisperKit behind the same protocol if intractable on iOS |
-| 2026-06-10 | Tier 2 default model: `whisper-small.en` | ~250 MB, English-only, good accuracy/footprint balance. `tiny.en` available for low-friction sanity tests |
-| 2026-06-10 | Tier 2 first cut: no streaming partials (finalize-only) | Chunked streaming for Whisper is its own design problem; ship the no-partials path first, revisit if dogfood UX demands it |
-| 2026-06-10 | Tier 2 buffer strategy: in-memory PCM during recording | Simpler than a scratch WAV; fine for notes up to ~30 min on iPhone 15 Pro Max. Revisit trigger captured in [#1](https://github.com/AlteredCraft/relay-notes/issues/1) |
-| 2026-06-10 | `TranscriptionOptions` becomes a sum type (`.apple` / `.whisperMLX`) | Two engines with different parameter sets; sum is type-safe with no nullable fields and matches `TranscriptionEngine` selection in `Tunings` |
-| 2026-06-10 | T1.1 split into T1.1a (mlx-swift "hello on device") + T1.1b (Whisper transcript) | Research surfaced that `mlx-swift-examples` has no Whisper reference (issue #146 closed unanswered); the actual reference is `ml-explore/mlx-examples` Python — a port, not a copy-paste. T1.1a derisks the SPM dep + Metal-on-device link in one evening before investing in the multi-day port |
-| 2026-06-10 | T1.1b smoke-test model: `whisper-tiny.en` (not `small.en`) | `small.en` at FP16 likely needs the `increased-memory-limit` entitlement; free-tier sideload provisioning profiles may strip it. `tiny.en` (~75 MB) fits under the default budget. `small.en` stays the T1.2 production target, gated on entitlement-on-free-tier validation |
-| 2026-06-10 | Default model promoted to `whisper-small.en` | After T1.1's tiny.en run succeeded, swapped in small.en (481 MB FP16 safetensors) and re-ran the same smoke. Process did not get killed by jetsam — entitlement empirically *not* required for whisper-small.en on iPhone 15 Pro Max. Accuracy delta on `ls_test.flac`: tiny.en said "goods sold openly, shorted the burden" (nonsense); small.en said "good soul openly shouldered the burden" (the correct phrase). Cost: encoder 60→419 ms, total 491→1772 ms — ~3.6× slower but ~3.4× real-time on a 6 s clip, comfortable for finalize-only UX |
-| 2026-06-10 | Dropped `tiny.en` support entirely (T1.2a) | With `small.en` validated as the production default and no user-facing variant picker planned for v1, `tiny.en` was dead code (one persisted `whisperModelVariant` value never read, one `WhisperModelVariant` enum case never reached, fallback wiring nobody would hit). Deleted the enum, the `Tunings.whisperModelVariant` knob, and the `WhisperMLXOptions` struct's variant + language fields (both English-only-build dead-weight). If a second variant ever returns, re-adding the enum is cheap |
-| 2026-06-10 | Whisper assets parametrized by `WhisperModelLocation` (T1.2a) | New `nonisolated enum` with `.bundled` (Bundle lookup, dev) and `.directory(URL)` (filesystem, T1.2b's download path). Refactor was mechanical — `ModelDimensions.loadFromBundle()` → `load(from:)`, same for `WhisperModel`; `WhisperTokenizer.init()` → `init(location:)`; `WhisperAudio.{melFilters,logMelSpectrogram}` gained `from:` (no default — every call site declares its location). T1.2b's `WhisperModelStore` will inject `.directory(applicationSupportURL)` so the recorder uses downloaded weights; bundled stays for dev iteration |
-| 2026-06-11 | Long audio: timestamp-guided seek loop, model-agnostic driver (T1.2d-1) | `padOrTrim` truncates at Whisper's architectural 30-s window — surfaced as a silent-truncation risk during T1.2c device validation. Ported the reference's seek loop with the windowing split model-agnostic (`AudioWindow` + `ChunkedTranscription`) so a future local model with different constraints swaps in a different window spec, not a different loop |
-| 2026-06-11 | Timestamp rules ported with OpenAI semantics, not mlx-examples' | The mlx-examples `ApplyTimestampRules` monotonicity rule has an index-vs-value bug that makes it a no-op (masks `timestamp_begin : <small index>` — an empty range). Ported `openai/whisper`'s version: mask timestamp *values* below the last emitted one |
-| 2026-06-11 | `condition_on_previous_text` not ported (windows decode independently) | It's the documented repetition-loop failure source, and the reference's recovery from it is temperature fallback — machinery our greedy-only decode doesn't have. Independent windows trade a little cross-boundary consistency for immunity to the failure mode |
-| 2026-06-12 | Settings + `Tunings` restructured into shared vs engine-specific groups (Approach C) | Built when Apple was the only engine; with two engines, the Apple-only dials (preset, contextual biasing) rendered as live no-ops under Whisper. Per-engine recognition settings now live in bundles (`AppleSpeechSettings` / `WhisperSettings`) mirroring the `TranscriptionOptions` sum type; the UI swaps a per-engine **Recognition** group while **Capture** / **Storage & playback** stay shared. UserDefaults keys unchanged (no migration). Sets up T2/T3 to add an engine via a bundle + a section + a switch arm, not new flat fields. See [issue #3](https://github.com/AlteredCraft/relay-notes/issues/3) |
+- **Application Support**, not Caches (Caches are evictable — a redownload from a coffee shop is bad). Excluded from iCloud backup.
+- Pre-download + delete from Settings — preserves the offline-recording promise once installed (zero network calls during a recording session). Delete asks for confirmation (480 MB / re-download).
+- **Gating, not a record-time block:** Whisper can't be *selected* without its model on disk — the engine row is disabled until ready, and deleting reverts the selection to Apple (`Tunings.reconcileEngineAvailability`).
 
 ---
 
 ## Open questions
 
-- Does setting `converter.sampleRateConverterQuality = .max` change the final streaming transcript at all?
-- Does `contextualStrings[.general]` actually bias `SpeechTranscriber` (vs only `DictationTranscriber`)? Need a structured comparison on proper-noun-heavy speech.
-- How much does buffer size (4096 → 1024 or 8192) move latency-of-first-partial vs accuracy?
-- Should a future "re-transcribe with cloud" action live in `NoteDetailView`? Would lean on the existing file-based `transcribe(_:options:)`.
+- Does `converter.sampleRateConverterQuality = .max` change the final streaming transcript at all?
+- Does `contextualStrings[.general]` actually bias `SpeechTranscriber` (vs only `DictationTranscriber`)? Needs a proper-noun-heavy A/B.
+- How much does buffer size (4096 → 1024 / 8192) move latency-of-first-partial vs accuracy?
+- Should a "re-transcribe with cloud/Whisper" action live in `NoteDetailView`, leaning on the file-based `transcribe(_:options:)`?
+
+## How to test a dial
+
+1. Pick a representative ~30 s recording (ideally already on the phone).
+2. Change one knob in Settings.
+3. Record the same content; diff transcripts.
+4. Log the outcome in [notes.md Appendix B](./notes.md#b-v11-accuracy-tuning-empirical-log) — *this* doc explains the dials; *that* table records what turning them did.
 
 ---
 
-## How to test changes here
+## Appendix: Decisions log
 
-1. Pick a representative ~30 s recording (yours, ideally already on the phone).
-2. Change one knob in the Tuning sheet.
-3. Record the same content. Diff transcripts.
-4. Add a row to the table at the top of [notes.md § V1.1 accuracy tuning](./notes.md#v11-accuracy-tuning) — that's where per-knob empirical outcomes live. *This doc* explains the dials; *that section* records what we found by turning them.
+| Date | Decision | Why |
+|---|---|---|
+| 2026-06-08 | Audio session mode default `.measurement` → `.default` | `.measurement` gave quiet playback with no observable STT win |
+| 2026-06-08 | AAC bitrate default 64 kbps mono | Voice-grade; balances size and fidelity |
+| 2026-06-08 | Transcription preset default `.transcription` | Maximize stored-transcript accuracy; live UX comes from the streaming override, not the preset |
+| 2026-06-08 | Streaming session unions `.volatileResults` into the preset | Live partials without dragging in `fastResults` (which would reduce accuracy) |
+| 2026-06-08 | `AVAudioConverter` left at default quality | Default works; revisit if a streaming-only regression appears |
+| 2026-06-08 | Contextual biasing empty default | Effect on `SpeechTranscriber` (vs `DictationTranscriber`) undocumented/untested; off until there's a corpus |
+| 2026-06-10 | Tier 2 engine: raw `mlx-swift`, not WhisperKit | One ML runtime (avoid Core ML + MLX when L1 lands); pays the MLX-on-iOS cost on a smaller problem than an LLM; transferable to Parakeet/Qwen3-ASR. Escape valve to WhisperKit behind the same protocol if intractable |
+| 2026-06-10 | Tier 2 default model `whisper-small.en` | ~481 MB FP16, English-only, good accuracy/footprint balance |
+| 2026-06-10 | Tier 2 first cut: no streaming partials (finalize-only) | Chunked streaming is its own design problem; ship no-partials first, revisit if dogfood demands it |
+| 2026-06-10 | Tier 2 buffer strategy: in-memory PCM during recording | Simpler than a scratch WAV; fine to ~30 min on the 15 Pro Max. Revisit trigger in [#1](https://github.com/AlteredCraft/relay-notes/issues/1) |
+| 2026-06-10 | `TranscriptionOptions` becomes a sum type (`.apple` / `.whisperMLX`) | Two engines, different parameter sets; sum is type-safe with no nullable fields and matches `TranscriptionEngine` |
+| 2026-06-10 | T1.1 split into T1.1a (mlx-swift "hello on device") + T1.1b (Whisper transcript) | `mlx-swift-examples` has no Whisper reference (issue #146); the real reference is `ml-explore/mlx-examples` Python — a port, not a copy-paste. T1.1a derisks the SPM dep + Metal link before the multi-day port |
+| 2026-06-10 | Source repo `mlx-community/whisper-small.en-fp16` (not the `-mlx` sibling) | The `-fp16` repo ships `model.safetensors` directly; the `-mlx` repo ships npz that `mlx-swift`'s `loadArrays` can't read without an npz→safetensors conversion step |
+| 2026-06-10 | Dropped `tiny.en` support entirely (T1.2a) | `small.en` validated as the production default with no variant picker planned; `tiny.en` was dead code (variant enum, `Tunings.whisperModelVariant`, `WhisperMLXOptions` fields). Re-adding the enum is cheap if a second variant returns |
+| 2026-06-10 | Whisper assets parametrized by `WhisperModelLocation` (T1.2a) | `nonisolated enum` with `.bundled` (dev) and `.directory(URL)` (download path). Loaders take a location with no default — every call site declares it; `WhisperModelStore` injects the downloaded dir |
+| 2026-06-11 | Long audio: timestamp-guided seek loop, model-agnostic driver (T1.2d-1) | `padOrTrim` truncates at Whisper's 30-s window (silent-truncation risk, surfaced in T1.2c). Ported the reference's seek loop with windowing split model-agnostic (`AudioWindow` + `ChunkedTranscription`) so a future model swaps a window spec, not the loop |
+| 2026-06-11 | Timestamp rules ported with OpenAI semantics, not mlx-examples' | The mlx-examples `ApplyTimestampRules` monotonicity rule has an index-vs-value bug that no-ops it (masks an empty range). Ported `openai/whisper`'s version: mask timestamp *values* below the last emitted one |
+| 2026-06-11 | `condition_on_previous_text` not ported (windows decode independently) | The documented repetition-loop source; its recovery is temperature fallback, which greedy-only doesn't have. Independent windows trade a little cross-boundary consistency for immunity to the failure mode |
+| 2026-06-12 | Settings + `Tunings` restructured into shared vs engine-specific groups (Approach C) | With two engines, the Apple-only dials rendered as live no-ops under Whisper. Per-engine settings now live in bundles mirroring `TranscriptionOptions`; the UI swaps a per-engine Recognition group while Capture / Storage stay shared. UserDefaults keys unchanged (no migration). Sets up T2/T3 to add an engine via a bundle + section + switch arm. See [issue #3](https://github.com/AlteredCraft/relay-notes/issues/3) |
