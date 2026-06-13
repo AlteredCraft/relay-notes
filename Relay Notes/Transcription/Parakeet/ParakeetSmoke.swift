@@ -48,6 +48,73 @@ nonisolated enum ParakeetSmoke {
     }
 
     static func run() async {
+        // T2.1b first — the featurizer needs no weights, so it logs its result in
+        // seconds; T2.1a's heavy F32→bf16 cast (~1.2 GB, minutes) runs after, and
+        // the durable `os.Logger` output means you can read the mel and stop the
+        // app without waiting for it.
+        await runFeaturizer()
+        await runLoadFootprint()
+    }
+
+    // MARK: - T2.1b — mel front-end (no weights; mirrors MLXSmoke.runWhisperAudio)
+
+    /// Computes the Parakeet log-mel on the bundled `ls_test.flac` and logs its
+    /// shape + value range. Weight-independent, so it's the fast inner loop while
+    /// tuning the §5.2 featurizer risks. Numerical correctness is only *confirmed*
+    /// at the T2.1d end-to-end substring gate; here we just check the pipeline
+    /// runs and produces a `[1, ~671, 128]` tensor with a sane range.
+    static func runFeaturizer() async {
+        say("=== T2.1b mel front-end START ===")
+
+        // Only `config.json` is needed (the preprocessor block). Weights are
+        // already on the device from T2.1a, so this returns without downloading.
+        let dir: URL
+        do {
+            dir = try await ensureModelDownloaded()
+        } catch {
+            say("download failed: \(error) — skipping featurizer.")
+            return
+        }
+
+        let config: ParakeetPreprocessConfig
+        do {
+            config = try ParakeetTDTConfig.load(from: dir.appendingPathComponent("config.json")).preprocessor
+        } catch {
+            say("config decode FAILED: \(error) — skipping featurizer.")
+            return
+        }
+        say("preprocessor = \(config.features) mels, n_fft \(config.nFFT), win \(config.winLength), hop \(config.hopLength), normalize \(config.normalize), preemph \(config.preemph.map { "\($0)" } ?? "off")")
+
+        guard let flacURL = Bundle.main.url(forResource: "ls_test", withExtension: "flac") else {
+            say("ls_test.flac NOT FOUND in bundle — skipping featurizer.")
+            return
+        }
+
+        do {
+            let pcm = try WhisperAudio.loadPCM(url: flacURL)
+            say("ls_test.flac PCM samples = \(pcm.count) (≈\(pcm.count / config.sampleRate)s @ \(config.sampleRate) Hz)")
+
+            let filters = ParakeetAudio.melFilterbank(config: config)
+            eval(filters)  // `eval` is MLX.eval(_:) — forces the lazy graph, not code exec.
+            say("mel filterbank shape     = \(filters.shape) (Slaney; expect [\(config.features), \(config.nFFT / 2 + 1)])")
+
+            let audio = MLXArray(pcm)
+            let mel = ParakeetAudio.logMel(audio, config: config, filters: filters)
+            eval(mel)
+            let melMin: Float = mel.min().item()
+            let melMax: Float = mel.max().item()
+            let melMean: Float = mel.mean().item()
+            say("log-mel shape            = \(mel.shape) (expect [1, 667, \(config.features)] for ls_test; = 1 + samples/hop)")
+            say("log-mel range / mean     = [\(melMin), \(melMax)] / \(melMean)")
+        } catch {
+            say("featurizer ERROR: \(error)")
+        }
+        say("=== T2.1b END ===")
+    }
+
+    // MARK: - T2.1a — load / footprint / key-dump
+
+    static func runLoadFootprint() async {
         say("=== T2.1a load / footprint / key-dump START ===")
         let dir: URL
         do {

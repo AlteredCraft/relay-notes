@@ -4,8 +4,9 @@ import Testing
 @testable import Relay_Notes
 
 /// Pure `Codable` coverage for `ParakeetTDTConfig` — simulator-safe (no MLX).
-/// Pins the custom-init branches: nested `greedy.max_symbols`, optional
-/// `preemph`, and the defaulted `numExtraOutputs` / `maxSymbols`.
+/// Pins the custom-init branches: nested `greedy.max_symbols`, the `preemph`
+/// absent-vs-present-vs-null semantics, and the defaulted `numExtraOutputs` /
+/// `maxSymbols`.
 struct ParakeetConfigTests {
 
     /// A config exercising the *present* branches: explicit `greedy.max_symbols`,
@@ -108,9 +109,45 @@ struct ParakeetConfigTests {
 
     @Test func appliesDefaultsWhenOptionalsAbsent() throws {
         let c = try decode(Self.minimalJSON)
-        #expect(c.preprocessor.preemph == nil)
+        // Absent `preemph` ⇒ the NeMo/senstella dataclass default 0.97 (the model
+        // was trained with it), NOT nil — see ParakeetConfig RISK 1 / plan.T2.md §5.2.
+        #expect(c.preprocessor.preemph == 0.97)
         #expect(c.preprocessor.dither == nil)
         #expect(c.joint.numExtraOutputs == 0)   // default when key absent
         #expect(c.decoding.maxSymbols == 10)     // default when greedy block absent
+    }
+
+    /// An *explicit* `preemph: null` means "disabled" and must decode to `nil`,
+    /// distinct from an absent key (which defaults to 0.97). This pins the
+    /// `contains`-based branch that mirrors `dacite`'s absent-vs-null handling.
+    @Test func explicitNullPreemphDisablesIt() throws {
+        let json = """
+        {
+          "preprocessor": {
+            "sample_rate": 16000, "normalize": "per_feature",
+            "window_size": 0.025, "window_stride": 0.01, "window": "hann",
+            "features": 128, "n_fft": 512, "preemph": null
+          },
+          "encoder": {
+            "feat_in": 128, "n_layers": 24, "d_model": 1024, "n_heads": 8,
+            "ff_expansion_factor": 4, "subsampling_factor": 8,
+            "self_attention_model": "rel_pos", "subsampling": "dw_striding",
+            "conv_kernel_size": 9, "subsampling_conv_channels": 256,
+            "pos_emb_max_len": 5000, "use_bias": false, "xscaling": false
+          },
+          "decoder": {
+            "blank_as_pad": true, "vocab_size": 1024,
+            "prednet": { "pred_hidden": 640, "pred_rnn_layers": 2 }
+          },
+          "joint": {
+            "num_classes": 1024, "vocabulary": ["<unk>"],
+            "jointnet": { "joint_hidden": 640, "activation": "relu",
+                          "encoder_hidden": 1024, "pred_hidden": 640 }
+          },
+          "decoding": { "model_type": "tdt", "durations": [0, 1, 2, 3, 4] }
+        }
+        """
+        let c = try decode(json)
+        #expect(c.preprocessor.preemph == nil)
     }
 }

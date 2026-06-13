@@ -16,9 +16,14 @@ import Foundation
 /// `n_fft 512` (not 400), `features 128` mels (not 80), `normalize "per_feature"`
 /// (per-mel z-score, not Whisper's global `(logmel+4)/4` clamp), `window_size`
 /// 0.025 s = 400 samples ≠ `n_fft` (the window is zero-padded to 512). This v2
-/// checkpoint carries **no `preemph` and no `mag_power`** keys — so preemphasis
-/// is off here (kept optional, not assumed 0.97) and the power spectrum exponent
-/// defaults to 2.0.
+/// checkpoint carries **no `preemph` and no `mag_power`** keys — but *absent ≠
+/// disabled*: NeMo's `AudioToMelSpectrogramPreprocessor` and senstella's
+/// `PreprocessArgs` both default `preemph` to **0.97**, and senstella loads the
+/// config via `dacite.from_dict`, which applies the dataclass default for any
+/// missing key. So this model was trained with preemph 0.97 and the featurizer
+/// must apply it; `preemph` decodes to 0.97 when the key is absent (an explicit
+/// value — including JSON `null` — is honored as written). `mag_power` likewise
+/// defaults to 2.0 (power spectrum). See `plan.T2.md` §5.2 RISK 1 / T2.1b.
 nonisolated struct ParakeetTDTConfig: Codable, Sendable {
     let preprocessor: ParakeetPreprocessConfig
     let encoder: ParakeetConformerConfig
@@ -50,8 +55,10 @@ nonisolated struct ParakeetPreprocessConfig: Codable, Sendable {
     let dither: Float?
     let padTo: Int?
     let padValue: Float?
-    /// Pre-emphasis coefficient. **Absent (nil) for parakeet-tdt-0.6b-v2** — do
-    /// not assume 0.97; apply only when present.
+    /// Pre-emphasis coefficient. The key is **absent** for parakeet-tdt-0.6b-v2,
+    /// which decodes to **0.97** — the NeMo / senstella dataclass default the
+    /// model was trained with (see the type doc above). An explicit value in the
+    /// JSON (including `null`, which yields `nil` → no preemphasis) is honored.
     let preemph: Float?
 
     /// Power-spectrum exponent. Not present in this checkpoint's JSON; NeMo's
@@ -75,6 +82,29 @@ nonisolated struct ParakeetPreprocessConfig: Codable, Sendable {
         case padTo = "pad_to"
         case padValue = "pad_value"
         case preemph
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sampleRate = try c.decode(Int.self, forKey: .sampleRate)
+        normalize = try c.decode(String.self, forKey: .normalize)
+        windowSize = try c.decode(Float.self, forKey: .windowSize)
+        windowStride = try c.decode(Float.self, forKey: .windowStride)
+        window = try c.decode(String.self, forKey: .window)
+        features = try c.decode(Int.self, forKey: .features)
+        nFFT = try c.decode(Int.self, forKey: .nFFT)
+        dither = try c.decodeIfPresent(Float.self, forKey: .dither)
+        padTo = try c.decodeIfPresent(Int.self, forKey: .padTo)
+        padValue = try c.decodeIfPresent(Float.self, forKey: .padValue)
+        // Mirror `dacite.from_dict` (the Python reference's loader): a *missing*
+        // key falls back to the dataclass default (0.97); a *present* key — even
+        // an explicit `null` — is honored as-is. `decodeIfPresent` collapses
+        // absent and `null` to `nil`, so distinguish them via `contains`.
+        if c.contains(.preemph) {
+            preemph = try c.decodeIfPresent(Float.self, forKey: .preemph)
+        } else {
+            preemph = 0.97
+        }
     }
 }
 
@@ -228,7 +258,13 @@ nonisolated struct ParakeetDecodingConfig: Codable, Sendable {
 
 extension ParakeetTDTConfig {
     /// Decode from a `config.json` on disk.
-    static func load(from url: URL) throws -> ParakeetTDTConfig {
+    ///
+    /// `nonisolated` explicitly: the project default actor isolation is
+    /// `MainActor`, and an extension method does *not* inherit the primary
+    /// declaration's `nonisolated` — without this it picks up `MainActor` and
+    /// can't be called from the `nonisolated` smoke/transcriber (a Swift 6
+    /// hard error). Decoding is pure and isolation-neutral.
+    nonisolated static func load(from url: URL) throws -> ParakeetTDTConfig {
         let data = try Data(contentsOf: url)
         return try JSONDecoder().decode(ParakeetTDTConfig.self, from: data)
     }

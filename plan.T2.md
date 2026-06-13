@@ -43,8 +43,8 @@ Branch: **`t2-parakeet`** (off `t1.3-measurements`; T1.3 is not yet merged to ma
 |---|---|---|
 | **T2.0** | Model + reference decision | ✅ done |
 | **T2.1a** | Config types + weight-load footprint smoke | ✅ done, device-validated 2026-06-13 |
-| **T2.1b** | Mel front-end (featurizer) | ⬜ **next** |
-| **T2.1c** | FastConformer encoder | ⬜ |
+| **T2.1b** | Mel front-end (featurizer) | ✅ done, device-validated 2026-06-13 (`[1, 667, 128]`, per-feature mean ≈ 0) |
+| **T2.1c** | FastConformer encoder | ⬜ **next** |
 | **T2.1d** | TDT greedy decoder + vocab decode (substring gate) | ⬜ |
 | **T2.1e** | Long-audio chunking (overlap + token merge) | ⬜ |
 | **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ⬜ |
@@ -54,8 +54,12 @@ Branch: **`t2-parakeet`** (off `t1.3-measurements`; T1.3 is not yet merged to ma
 
 **Shipped so far** (committed on `t2-parakeet`):
 - `Relay Notes/Transcription/Parakeet/ParakeetConfig.swift` — `Codable` config types.
-- `Relay Notes/Transcription/Parakeet/ParakeetSmoke.swift` — DEBUG device harness (`os.Logger`).
-- `Relay NotesTests/ParakeetConfigTests.swift` — 4 config-decode tests.
+  (T2.1b: `preemph` now decodes absent→0.97; `load` marked `nonisolated`.)
+- `Relay Notes/Transcription/Parakeet/ParakeetAudio.swift` — **T2.1b mel front-end**
+  (`logMel` + Slaney `melFilterbank`); reuses `WhisperAudio.stft`/`hanning`.
+- `Relay Notes/Transcription/Parakeet/ParakeetSmoke.swift` — DEBUG device harness (`os.Logger`);
+  T2.1b added the weight-free `runFeaturizer()` section (runs first).
+- `Relay NotesTests/ParakeetConfigTests.swift` — 5 config-decode tests (added explicit-null preemph).
 - `Relay Notes/Views/SettingsView.swift` — "Run Parakeet smoke (console)" debug button.
 - `Relay Notes/Transcription/WhisperModelStore.swift` — `DownloadCoordinator` hardened
   (300 s request timeout, `waitsForConnectivity`, made `internal`).
@@ -239,16 +243,25 @@ Pipeline (from `AudioProcessing.swift` `getLogMel` / `audio.py` `get_logmel`):
 6. **per-feature norm:** per-mel-bin z-score across time: `(x - mean_t) / (std_t + 1e-5)`.
 7. transpose to `[t, 128]`, add batch dim → `[1, t, 128]`.
 
-**RISK 1 — preemphasis (HIGH; resolve in T2.1b):** the config **omits** `preemph`.
-`ParakeetConfig` currently decodes it as **nil** (the T2.1a smoke logged "preemph none", and
-code comments say "no preemph on this checkpoint"). **This is probably wrong.** NeMo's
-`AudioToMelSpectrogramPreprocessor` defaults `preemph=0.97`, and senstella's `PreprocessArgs`
-dataclass defaults `preemph=0.97` — an *absent* key means "use the default," not "disabled,"
-so the model was very likely **trained with preemph=0.97**. (The FluidInference Swift port,
-which reads it as Optional, would skip it — a likely latent bug there.) **Action:** default
-`preemph` to 0.97 when the key is absent (or hardcode 0.97 for this checkpoint), and let the
-T2.1d substring check confirm. Preemph: `x = concat([x[:1], x[1:] - 0.97 * x[:-1]])`.
-Update the `ParakeetConfig` comment + the T2.1a CHANGE_LOG note if you flip this.
+**RISK 1 — preemphasis (HIGH) — RESOLVED in T2.1b → apply 0.97.** The config **omits**
+`preemph`, but *absent ≠ disabled*: senstella loads the config via `dacite.from_dict`, which
+applies the `PreprocessArgs.preemph=0.97` **dataclass default** for any missing key (and NeMo's
+`AudioToMelSpectrogramPreprocessor` defaults to 0.97 too), so the model was **trained with
+preemph=0.97**. (The FluidInference Swift port reads it as Optional → skips it — confirmed
+latent bug.) **Done:** `ParakeetConfig` now decodes absent→0.97 while still honoring a present
+value, including explicit `null`→`nil` (distinguished via `container.contains`, mirroring dacite);
+`ParakeetAudio.logMel` applies `x = concat([x[:1], x[1:] - 0.97·x[:-1]])`. T2.1a comments +
+CHANGE_LOG updated. The T2.1d substring check is still the final arbiter.
+
+**RISK 4 — mel SCALE (Slaney vs HTK) (HIGH; found + resolved in T2.1b, not in the original
+three):** the oracle builds the filterbank with `librosa.filters.mel(..., htk=False,
+norm="slaney")`. `norm="slaney"` is only the *area* normalization; librosa's **default
+`htk=False` also selects the Slaney mel *scale*** (piecewise linear<1 kHz / log above) — two
+independent "Slaney" choices. The FluidInference Swift filterbank uses the **HTK** scale
+(`2595·log10(1+f/700)`) with Slaney norm — internally inconsistent vs the oracle (another latent
+bug, alongside its hann + preemph). **Done:** `ParakeetAudio.melFilterbank` reimplements the
+Slaney scale + Slaney area-norm in host `Double` to match librosa exactly. Like the other three,
+the T2.1d substring check is the confirmation.
 
 **RISK 2 — hann window variant (MEDIUM):** Python uses `np.hanning(win_length+1)[:-1]` =
 **periodic** hann (`0.5 - 0.5·cos(2π k / win_length)`). The FluidInference Swift port uses the
@@ -500,8 +513,9 @@ For each: **goal · do · validate · gotchas · done-when.**
 
 ## 10. Open questions / pending decisions
 
-1. **preemph 0.97 vs none** (§5.2 RISK 1) — resolve in T2.1b; substring check arbitrates. Likely 0.97;
-   update `ParakeetConfig` + T2.1a comments/CHANGE_LOG if flipped.
+1. ~~**preemph 0.97 vs none** (§5.2 RISK 1)~~ — **RESOLVED in T2.1b: 0.97** (dacite applies the
+   absent-key dataclass default; `ParakeetConfig` + comments/CHANGE_LOG updated). Final confirmation
+   is still the T2.1d substring check — also the arbiter for the §5.2 hann / magnitude / mel-scale risks.
 2. **`increased-memory-limit` entitlement** — decide after T2.1c measures the forward-pass peak (§3.1).
 3. **Chunk merge sophistication** (§5.5) — simple overlap-cutoff vs full LCS; decide from a tiled-clip test.
 4. **bf16 vs a pre-converted on-disk format** — we cast F32→bf16 at load each launch (~fast, lazy). If
