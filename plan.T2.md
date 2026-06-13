@@ -44,8 +44,8 @@ Branch: **`t2-parakeet`** (off `t1.3-measurements`; T1.3 is not yet merged to ma
 | **T2.0** | Model + reference decision | ✅ done |
 | **T2.1a** | Config types + weight-load footprint smoke | ✅ done, device-validated 2026-06-13 |
 | **T2.1b** | Mel front-end (featurizer) | ✅ done, device-validated 2026-06-13 (`[1, 667, 128]`, per-feature mean ≈ 0) |
-| **T2.1c** | FastConformer encoder | ⬜ **next** |
-| **T2.1d** | TDT greedy decoder + vocab decode (substring gate) | ⬜ |
+| **T2.1c** | FastConformer encoder | ✅ done, device-validated 2026-06-13 (`[1, 84, 1024]`; fwd 130 ms; **peak 1.31 GB → no entitlement**) |
+| **T2.1d** | TDT greedy decoder + vocab decode (substring gate) | ⬜ **next** |
 | **T2.1e** | Long-audio chunking (overlap + token merge) | ⬜ |
 | **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ⬜ |
 | **T2.3** | Per-engine gating (retire the single `whisperReady` Bool) | ⬜ |
@@ -57,8 +57,13 @@ Branch: **`t2-parakeet`** (off `t1.3-measurements`; T1.3 is not yet merged to ma
   (T2.1b: `preemph` now decodes absent→0.97; `load` marked `nonisolated`.)
 - `Relay Notes/Transcription/Parakeet/ParakeetAudio.swift` — **T2.1b mel front-end**
   (`logMel` + Slaney `melFilterbank`); reuses `WhisperAudio.stft`/`hanning`.
+- `Relay Notes/Transcription/Parakeet/ParakeetAttention.swift` — **T2.1c** rel-pos MHA
+  (`ParakeetRelPosAttention`) + `parakeetRelPositionalEncoding`.
+- `Relay Notes/Transcription/Parakeet/ParakeetEncoder.swift` — **T2.1c** FastConformer
+  (`ParakeetConformerEncoder` + FF/conv/block/subsampling) + incremental cast-release `load`.
 - `Relay Notes/Transcription/Parakeet/ParakeetSmoke.swift` — DEBUG device harness (`os.Logger`);
-  T2.1b added the weight-free `runFeaturizer()` section (runs first).
+  T2.1b `runFeaturizer()` + T2.1c `runEncoder()` (load + forward + peak footprint). `run()`
+  now does featurizer→encoder; T2.1a `runLoadFootprint()` retained but no longer auto-run.
 - `Relay NotesTests/ParakeetConfigTests.swift` — 5 config-decode tests (added explicit-null preemph).
 - `Relay Notes/Views/SettingsView.swift` — "Run Parakeet smoke (console)" debug button.
 - `Relay Notes/Transcription/WhisperModelStore.swift` — `DownloadCoordinator` hardened
@@ -106,11 +111,14 @@ Pitfall that caused the first OOM: `var remaining = arrays` (a *dictionary copy*
 original `arrays` pinning all 697 F32 buffers. **Mutate the dictionary you're iterating**
 (`arrays.removeValue(forKey:)`) so each F32 actually releases.
 
-**Entitlement:** NOT needed for weights-resident. It is now gated on the **forward-pass
-activation peak** (measured in T2.1c). There is ~1.8 GB headroom over the floor under the
-~3 GB ceiling, so the encoder *may* fit without it — **measure in T2.1c before deciding.**
-If needed, `com.apple.developer.kernel.increased-memory-limit` is L1's prerequisite anyway
-and is expected to work on the free-tier sideload (per `notes.md`).
+**Entitlement: NOT needed — RESOLVED in T2.1c (device-measured 2026-06-13).** The encoder
+forward pass peaks at **1.31 GB `phys_footprint`** (MLX peak-active 1.22 GB) — only ~60 MB of
+activations over the ~1.27 GB bf16 weight floor (the encoder is weight-dominated; 84 frames ×
+1024 is a tiny activation set). That leaves **~1.7 GB headroom** under the ~3 GB no-entitlement
+ceiling, comfortably room for the tiny decoder/joint (~17 M params) in T2.1d. So Parakeet runs
+**without** `com.apple.developer.kernel.increased-memory-limit`, like Whisper. (The entitlement
+is still L1's prerequisite and is expected to work on the free-tier sideload per `notes.md` if a
+later stage ever needs it.)
 
 ### 3.2 MLX cannot run on the iOS Simulator
 
@@ -302,6 +310,29 @@ All ops are native in mlx-swift (`Conv1d`/`Conv2d` w/ groups, `LSTM`, `BatchNorm
 (`[1, t/8, 1024]`) + timing, and — importantly — the **peak `phys_footprint` during the
 forward pass** (reuse the `PeakMemorySampler` pattern from `MLXSmoke.swift`). That peak decides
 the entitlement question (§3.1).
+
+**Port status (T2.1c — built; device-pending).** `ParakeetEncoder.swift` +
+`ParakeetAttention.swift`. Decisions that held up against the references + mlx-swift source:
+- **No key remapper, no conv transpose.** `@ModuleInfo`/`@ParameterInfo` keys are the
+  snake_case safetensors keys verbatim, so `loadArrays` → strip `encoder.` → `unflattened` →
+  `update` loads the tree directly (Whisper-port convention). The mlx-community safetensors are
+  already in MLX channel-last conv layout — the reference loads with no transpose (`let
+  transformedWeights = weights`), and mlx-swift `Conv1d`/`Conv2d` weight shape is
+  `[out, kernel…, in/groups]`, which matches. The `pre_encode.conv` array keeps `ReLU()` in its
+  slots so the loaded indices line up with `conv.{0,2,3,5,6}`.
+- **Rel-pos attention = SDPA additive-mask trick** (only `rel_pos` ported; the
+  `rel_pos_local_attn` Metal-kernel path is skipped — this checkpoint is `rel_pos`). `matrix_bd
+  = relShift((q+bias_v)·pᵀ)·scale` is passed as the additive `mask` to
+  `MLXFast.scaledDotProductAttention(q+bias_u, k, v, scale:)` → the Transformer-XL `AC+BD` sum.
+  `MLXFast` lives in the `MLX` module (no separate import). The positional encoding is a free
+  function (no learned params → out of the module tree), building the centered `2·T−1` window
+  directly (the Python slices it from a 5000-row buffer; `xscaling=false` ⇒ no input scaling).
+- **BatchNorm** (`affine:true, trackRunningStats:true`, eps 1e-5) exposes
+  `weight/bias/running_mean/running_var` keys verbatim; eval-mode uses the running stats.
+- **`use_bias=false`** ⇒ q/k/v/out/pos + FF + conv projections carry no bias.
+- **Loader** = the §3.1 incremental cast-release on the encoder subset; the non-deprecated
+  `Memory.cacheLimit = 0` setter. Smoke: `ParakeetSmoke.runEncoder()` logs shape + timing + peak
+  footprint + an explicit FITS/NEEDS entitlement verdict vs the ~3 GB ceiling.
 
 ### 5.4 TDT greedy decoder (T2.1d) — the correctness gate
 
@@ -516,7 +547,8 @@ For each: **goal · do · validate · gotchas · done-when.**
 1. ~~**preemph 0.97 vs none** (§5.2 RISK 1)~~ — **RESOLVED in T2.1b: 0.97** (dacite applies the
    absent-key dataclass default; `ParakeetConfig` + comments/CHANGE_LOG updated). Final confirmation
    is still the T2.1d substring check — also the arbiter for the §5.2 hann / magnitude / mel-scale risks.
-2. **`increased-memory-limit` entitlement** — decide after T2.1c measures the forward-pass peak (§3.1).
+2. ~~**`increased-memory-limit` entitlement**~~ — **RESOLVED in T2.1c: NOT needed.** Encoder
+   forward peaks at 1.31 GB `phys_footprint` (device-measured), ~1.7 GB under the ~3 GB ceiling (§3.1).
 3. **Chunk merge sophistication** (§5.5) — simple overlap-cutoff vs full LCS; decide from a tiled-clip test.
 4. **bf16 vs a pre-converted on-disk format** — we cast F32→bf16 at load each launch (~fast, lazy). If
    load time grates, consider converting once to a bf16 safetensors on disk (T2.2 could own this), so

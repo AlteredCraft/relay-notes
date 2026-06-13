@@ -48,12 +48,13 @@ nonisolated enum ParakeetSmoke {
     }
 
     static func run() async {
-        // T2.1b first — the featurizer needs no weights, so it logs its result in
-        // seconds; T2.1a's heavy F32→bf16 cast (~1.2 GB, minutes) runs after, and
-        // the durable `os.Logger` output means you can read the mel and stop the
-        // app without waiting for it.
+        // Cheap → expensive. T2.1b (featurizer) needs no weights and logs in
+        // seconds; T2.1c (encoder) does the heavy bf16 cast-load + forward and
+        // reports the peak footprint that decides the entitlement. T2.1a
+        // (`runLoadFootprint`, the full-key-dump + bf16-floor measurement) is
+        // device-validated and recorded — call it manually if re-measuring.
         await runFeaturizer()
-        await runLoadFootprint()
+        await runEncoder()
     }
 
     // MARK: - T2.1b — mel front-end (no weights; mirrors MLXSmoke.runWhisperAudio)
@@ -110,6 +111,112 @@ nonisolated enum ParakeetSmoke {
             say("featurizer ERROR: \(error)")
         }
         say("=== T2.1b END ===")
+    }
+
+    // MARK: - T2.1c — FastConformer encoder (load + forward + peak footprint)
+
+    /// Loads the encoder (incremental bf16 cast-release), featurizes
+    /// `ls_test.flac`, runs the forward pass, and logs output shape + timing +
+    /// the **peak `phys_footprint`** sampled across the forward — the number that
+    /// decides whether the `increased-memory-limit` entitlement is needed (§3.1).
+    /// `Memory.cacheLimit = 0` (set by the loader) bounds the buffer pool, so the
+    /// peak reported is close to the true live working set, not the reclaimable
+    /// cache high-water.
+    static func runEncoder() async {
+        say("=== T2.1c FastConformer encoder START ===")
+
+        let dir: URL
+        do {
+            dir = try await ensureModelDownloaded()
+        } catch {
+            say("download failed: \(error) — skipping encoder.")
+            return
+        }
+
+        let config: ParakeetTDTConfig
+        do {
+            config = try ParakeetTDTConfig.load(from: dir.appendingPathComponent("config.json"))
+        } catch {
+            say("config decode FAILED: \(error) — skipping encoder.")
+            return
+        }
+
+        guard let flacURL = Bundle.main.url(forResource: "ls_test", withExtension: "flac") else {
+            say("ls_test.flac NOT FOUND in bundle — skipping encoder.")
+            return
+        }
+
+        do {
+            // Featurize in float32 (precision-sensitive per-feature norm), then
+            // cast the mel to bf16 to match the encoder's resident dtype.
+            let pcm = try WhisperAudio.loadPCM(url: flacURL)
+            let filters = ParakeetAudio.melFilterbank(config: config.preprocessor)
+            let mel = ParakeetAudio
+                .logMel(MLXArray(pcm), config: config.preprocessor, filters: filters)
+                .asType(.bfloat16)
+            eval(mel)  // `eval` is MLX.eval(_:) — forces the lazy graph, not code exec.
+            say("mel input shape          = \(mel.shape) (bf16)")
+
+            // Load encoder weights via the incremental cast-release path (§3.1).
+            say("loading encoder weights (incremental bf16 cast-release)…")
+            MLX.GPU.resetPeakMemory()
+            let loadStart = Date()
+            let encoder = try ParakeetConformerEncoder.load(
+                weightsURL: dir.appendingPathComponent("model.safetensors"), config: config)
+            let loadMs = Int(Date().timeIntervalSince(loadStart) * 1000)
+            let loadSnap = MLX.Memory.snapshot()
+            say("encoder loaded in \(loadMs) ms")
+            say("  resident floor         = \(formatBytes(residentFootprintBytes())) (encoder bf16 weights)")
+            say("  MLX active / cache     = \(formatBytes(loadSnap.activeMemory)) / \(formatBytes(loadSnap.cacheMemory))")
+
+            // Forward pass, sampling phys_footprint off-actor so it captures the
+            // GPU-bound peak. resetPeakMemory so MLX peak-active is attributable here.
+            let sampler = PeakMemorySampler()
+            let poll = Task {
+                while !Task.isCancelled {
+                    await sampler.record(residentFootprintBytes())
+                    try? await Task.sleep(for: .milliseconds(25))
+                }
+            }
+            MLX.GPU.resetPeakMemory()
+            let fwdStart = Date()
+            let out = encoder(mel)
+            eval(out)
+            let fwdMs = Int(Date().timeIntervalSince(fwdStart) * 1000)
+            poll.cancel()
+            let peak = await sampler.peak
+            let snap = MLX.Memory.snapshot()
+
+            let outMin: Float = out.min().item()
+            let outMax: Float = out.max().item()
+            let outMean: Float = out.mean().item()
+            say("encoder output shape     = \(out.shape) (expect [1, ~84, \(config.encoder.dModel)] for ls_test)")
+            say("encoder output range/mean= [\(outMin), \(outMax)] / \(outMean)")
+            say("forward pass time        = \(fwdMs) ms")
+            say("── memory (forward pass) ──")
+            say("  MLX active / cache     = \(formatBytes(snap.activeMemory)) / \(formatBytes(snap.cacheMemory))")
+            say("  MLX peak active        = \(formatBytes(snap.peakMemory))")
+            say("  PEAK process footprint = \(formatBytes(peak))")
+            let ceiling: UInt64 = 3 * 1024 * 1024 * 1024  // ~3 GB no-entitlement jetsam ceiling
+            let verdict =
+                peak == 0
+                ? "unavailable"
+                : (peak < ceiling ? "FITS without increased-memory-limit" : "NEEDS increased-memory-limit")
+            say("ENTITLEMENT: peak vs ~3 GB no-entitlement ceiling → \(verdict)")
+        } catch {
+            say("encoder ERROR: \(error)")
+        }
+        say("=== T2.1c END ===")
+    }
+
+    /// Tracks the max `phys_footprint` across `record` calls during the forward
+    /// pass — an actor so the polling task and the final read don't race. Mirrors
+    /// `MLXSmoke.PeakMemorySampler`.
+    private actor PeakMemorySampler {
+        private(set) var peak: UInt64 = 0
+        func record(_ value: UInt64?) {
+            if let value, value > peak { peak = value }
+        }
     }
 
     // MARK: - T2.1a — load / footprint / key-dump
