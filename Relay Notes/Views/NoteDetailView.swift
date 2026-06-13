@@ -13,6 +13,10 @@ struct NoteDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var titleDraft: String = ""
     @FocusState private var titleFocused: Bool
+    @State private var isEditingTranscript = false
+    @State private var transcriptDraft: String = ""
+    @State private var showRevertConfirmation = false
+    @FocusState private var transcriptFocused: Bool
     @State private var isReTranscribing = false
     @State private var reOutcome: ReTranscriber.Outcome?
     @State private var reErrorMessage: String?
@@ -31,12 +35,12 @@ struct NoteDetailView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        reTranscribeControl
+                        if !isEditingTranscript {
+                            reTranscribeControl
+                            editedIndicator
+                        }
                     }
-                    Text(note.transcript)
-                        .font(.body)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
+                    transcriptSection
                 }
                 .padding()
             }
@@ -49,28 +53,43 @@ struct NoteDetailView: View {
         }
         .navigationTitle(note.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(isEditingTranscript)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                ShareLink(
-                    item: note.transcript,
-                    subject: Text(note.displayTitle)
-                )
-                .disabled(note.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .accessibilityLabel("Share transcript")
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(role: .destructive) {
-                    showDeleteConfirmation = true
-                } label: {
-                    Image(systemName: "trash")
+            if isEditingTranscript {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { cancelTranscriptEdit() }
                 }
-                .accessibilityLabel("Delete note")
-            }
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    commitTitle()
-                    titleFocused = false
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { commitTranscriptEdit() }
+                        .fontWeight(.semibold)
+                }
+            } else {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Edit") { beginTranscriptEdit() }
+                        .accessibilityLabel("Edit transcript")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    ShareLink(
+                        item: note.transcript,
+                        subject: Text(note.displayTitle)
+                    )
+                    .disabled(note.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel("Share transcript")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .accessibilityLabel("Delete note")
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        commitTitle()
+                        titleFocused = false
+                    }
                 }
             }
         }
@@ -95,6 +114,16 @@ struct NoteDetailView: View {
         } message: {
             Text("This will permanently delete the transcript and the audio file.")
         }
+        .confirmationDialog(
+            "Revert to the original transcription?",
+            isPresented: $showRevertConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Revert", role: .destructive) { revertTranscript() }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Your edits will be discarded and the original transcription restored.")
+        }
         .sheet(item: $reOutcome) { outcome in
             ReTranscribeOutcomeSheet(
                 currentModel: note.transcriptionModel,
@@ -103,6 +132,9 @@ struct NoteDetailView: View {
                 onReplace: {
                     note.transcript = outcome.transcript
                     note.transcriptionModel = outcome.modelLabel
+                    // A re-transcription is a fresh machine baseline, so any prior
+                    // hand-edit no longer applies — the note returns to pristine.
+                    note.originalTranscript = nil
                     try? modelContext.save()
                     reOutcome = nil
                 },
@@ -164,6 +196,63 @@ struct NoteDetailView: View {
                 reErrorMessage = ReTranscriber.userMessage(for: error)
             }
         }
+    }
+
+    /// The transcript body: read-only selectable text, or an expanding multi-line
+    /// editor while in edit mode. `TextField(axis: .vertical)` (not `TextEditor`)
+    /// so it grows with content and scrolls naturally inside the outer `ScrollView`.
+    @ViewBuilder
+    private var transcriptSection: some View {
+        if isEditingTranscript {
+            TextField("Transcript", text: $transcriptDraft, axis: .vertical)
+                .font(.body)
+                .focused($transcriptFocused)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Text(note.transcript)
+                .font(.body)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+        }
+    }
+
+    /// Shown only once a note has been hand-edited: an "Edited" tag plus a
+    /// revert-to-original affordance (guarded by a confirmation). Mirrors the
+    /// inline caption style of `reTranscribeControl`.
+    @ViewBuilder
+    private var editedIndicator: some View {
+        if note.isEdited {
+            HStack(spacing: 10) {
+                Label("Edited", systemImage: "pencil")
+                Button("Revert to original") { showRevertConfirmation = true }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.top, 2)
+        }
+    }
+
+    private func beginTranscriptEdit() {
+        transcriptDraft = note.transcript
+        isEditingTranscript = true
+        transcriptFocused = true
+    }
+
+    private func cancelTranscriptEdit() {
+        isEditingTranscript = false
+        transcriptFocused = false
+    }
+
+    private func commitTranscriptEdit() {
+        note.applyEditedTranscript(transcriptDraft)
+        try? modelContext.save()
+        isEditingTranscript = false
+        transcriptFocused = false
+    }
+
+    private func revertTranscript() {
+        note.revertTranscript()
+        try? modelContext.save()
     }
 
     private var titleField: some View {
