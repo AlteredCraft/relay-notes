@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0AA641161B4B07CA3819EDF5 /* RecorderInterruptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B492830A62977826130AD2F /* RecorderInterruptionTests.swift */; };
+		0EE636621C9FC8E34DC2BCFE /* ParakeetConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 129067A590AEB2F6276A33BC /* ParakeetConfigTests.swift */; };
 		1E8AB0F00AD411F4CE431D8F /* TuningsPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9226CAD6B46AB3A7639A3AD /* TuningsPersistenceTests.swift */; };
 		37E23E0A8B5535E4642D586E /* NoteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AB135C7EC8F8041E9632C5B /* NoteTests.swift */; };
 		393935093896FD76BCBAD63E /* TranscriberFactoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45DC85D4B123F5A6BF195D86 /* TranscriberFactoryTests.swift */; };
@@ -37,6 +38,7 @@
 
 /* Begin PBXFileReference section */
 		0B492830A62977826130AD2F /* RecorderInterruptionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RecorderInterruptionTests.swift; path = "Relay NotesTests/RecorderInterruptionTests.swift"; sourceTree = "<group>"; };
+		129067A590AEB2F6276A33BC /* ParakeetConfigTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ParakeetConfigTests.swift; path = "Relay NotesTests/ParakeetConfigTests.swift"; sourceTree = "<group>"; };
 		227E2DA92FD71F92004EA486 /* notes.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = notes.md; sourceTree = "<group>"; };
 		227E2DCA2FD7572E004EA486 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 		227E2DF22FD75FA3004EA486 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
@@ -150,6 +152,7 @@
 				6AB135C7EC8F8041E9632C5B /* NoteTests.swift */,
 				DB99EE148BDB3FB62B72E89F /* RecorderPlaceholderTests.swift */,
 				444EF6210416D1827CE9ADFD /* ReTranscriberTests.swift */,
+				129067A590AEB2F6276A33BC /* ParakeetConfigTests.swift */,
 			);
 			name = "Relay NotesTests";
 			sourceTree = SOURCE_ROOT;
@@ -280,6 +283,7 @@
 				37E23E0A8B5535E4642D586E /* NoteTests.swift in Sources */,
 				DA3E02B8F7270F5FA563B2FD /* RecorderPlaceholderTests.swift in Sources */,
 				FEDEA01723A745D450072EA8 /* ReTranscriberTests.swift in Sources */,
+				0EE636621C9FC8E34DC2BCFE /* ParakeetConfigTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

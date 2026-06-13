@@ -149,6 +149,11 @@ struct SettingsView: View {
                     await MLXSmoke.run()
                 }
             }
+            Button("Run Parakeet smoke (console)") {
+                Task.detached(priority: .userInitiated) {
+                    await ParakeetSmoke.run()
+                }
+            }
         } header: {
             Text("Debug")
         } footer: {

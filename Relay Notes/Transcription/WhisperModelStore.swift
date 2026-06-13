@@ -306,7 +306,7 @@ final class WhisperModelStore {
 /// callbacks, not the `URLSessionDownloadDelegate.didWriteData(...)` we need for
 /// progress. The custom session also lets us call `invalidateAndCancel()` after
 /// the download finishes to break the URLSession ↔ delegate retain cycle.
-private final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
 
     enum CoordinatorError: Error {
         case unexpectedHTTPStatus(Int)
@@ -322,7 +322,17 @@ private final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @
     private var preservedTempURL: URL?
 
     func download(from url: URL, onProgress: @escaping (Double) -> Void) async throws -> URL {
-        let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+        // Large model files (Whisper ~481 MB, Parakeet ~2.5 GB) download from CDNs
+        // (e.g. HuggingFace's Xet bridge) that can stall mid-transfer. The default
+        // 60 s `timeoutIntervalForRequest` (max wait for *more* data) aborts the
+        // whole transfer on a single stall — observed as a -1001 timeout on the
+        // 2.5 GB Parakeet file. Widen it and let the session wait for connectivity
+        // rather than failing fast; `timeoutIntervalForResource` bounds the total.
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 300
+        configuration.timeoutIntervalForResource = 3600
+        configuration.waitsForConnectivity = true
+        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
         lock.withLock {
             self.session = session
             self.onProgress = onProgress
