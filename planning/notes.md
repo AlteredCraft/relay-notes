@@ -45,7 +45,7 @@ v1 voice-to-text is **built and on-device**. Tap → speak → stored transcript
 
 Daily-driver UX shipped: chronological list, detail view with audio playback, delete (row + audio file), search, optional title, share. The provider spine is in place and load-bearing: `Transcriber` (file + streaming), `TranscriptionEngine` + `TranscriberFactory`, the `TranscriptionOptions` sum type, and per-engine settings bundles (Approach C). Persistence is SwiftData (`Note`) + audio files referenced by filename. Verified by 84 simulator tests (MLX paths are device-only) plus device validation on the iPhone 15 Pro Max.
 
-**Next:** T1.3 (on-device load/decode/memory/battery measurements), then dogfood via sideload (V1.3). LLM enrichment (L1–L5) stays deferred until v1 is in daily use.
+**Next:** dogfood via sideload (V1.3) — T1.3 measurements are captured ([Appendix C](#c-t1-measurements--whisper-smallen-on-device-t13): ~4× realtime, memory bounded, `small.en` retained). LLM enrichment (L1–L5) stays deferred until v1 is in daily use.
 
 ---
 
@@ -130,8 +130,7 @@ Sequenced for ~12 hrs/week, iPhone-first. Completed stages are one-liners — th
 Promoted ahead of L1 on 2026-06-10: **third-party-model on-device viability is the riskiest unknown of the local-first thesis**, and the runtime wired here (raw `mlx-swift`) is the same one L1+ needs for local LLMs. Do the hard thing first, on a smaller problem than an LLM.
 
 - [x] **T1.0–T1.2 — Local Whisper wired end-to-end, device-validated.** Provider plumbing (sum type, `TranscriberFactory`) → `WhisperModelStore` (download / integrity / delete) → cached `actor` transcriber → chunked timestamp-guided decode (handles >30 s audio) → finalize-only streaming session → Settings download/delete UI + engine gating → recorder placeholder UX. Weights are download-only (`.app` ~74 MB). Device-validated on the iPhone 15 Pro Max through 2026-06-12. Per-substage detail in CHANGE_LOG; dial/port rationale in transcription-tuning.md.
-- [ ] **T1.3 — Validation + measurements + decisions log.** On-device smoke test against a checked-in WAV (assert substring). Measure on the iPhone 15 Pro Max for a 1-min and a 5-min note: model load, decode time, peak resident memory, battery delta. Append a "T1 measurements" subsection here + a Decisions-log row in transcription-tuning.md. Revisit `small.en` vs a smaller variant if the numbers demand it.
-  *Done when: tests green, measurements captured, defaults revisited if needed.*
+- [x] **T1.3 — Validation + measurements + decisions log.** *(2026-06-13)* On-device smoke (`MLXSmoke`) asserts the bundled WAV decodes to the expected substring (PASS), then measures 1-min/5-min decode on the iPhone 15 Pro Max. Headline: ~4× realtime (5-min note ≈ 80 s decode), memory bounded + flat across length (~2.8 GB footprint, mostly reclaimable MLX cache; ~464 MB live). Full numbers in [Appendix C](#c-t1-measurements--whisper-smallen-on-device-t13); Decisions-log row in transcription-tuning.md. **`small.en` retained** as default — numbers don't demand a smaller variant. Battery delta deferred (can't measure cleanly while tethered/charging).
 - [ ] **T2 — Second on-device engine.** Parakeet-MLX (NVIDIA, CC-BY-4.0) or Qwen3-ASR via MLX behind the same protocol — validates the runtime-extensibility claim and gives an accuracy ladder. Heavier than Whisper-small (~0.6B / ~2 GB) — likely needs the increased-memory-limit entitlement (L1's prerequisite anyway).
   *Done when: a second on-device engine is selectable and produces transcripts on the phone.*
 - [ ] **T3 — Cloud STT (`CloudTranscriber`).** Cohere as accuracy primary, Gemini for diarization-heavy clips. **Off by default**, explicit opt-in with a one-time data-leaves-the-device disclosure.
@@ -253,3 +252,46 @@ Notes: mode + bitrate are cheap capture/storage knobs; preset + biasing are Appl
 ### Engine comparison — Apple Speech vs Whisper (field trials)
 
 - **2026-06-12** — Field-trial impression: Apple Speech is performing at least as well as Whisper (`small.en`), possibly better. Qualitative, single-observer, real-use dictation — not a measured WER on a fixed corpus. Worth noting because Apple is the cheaper path (no 481 MB weights download, no MLX memory footprint); if the on-device accuracy gap stays this small in daily use, it weakens the case for Whisper as the default engine. Revisit with a controlled A/B (same audio through both engines) before drawing a firm conclusion. **Tool for this:** `NoteDetailView`'s "Re-transcribe" menu (2026-06-12) re-runs a saved note's audio through the other engine and shows a current-vs-new comparison — the in-app substrate for the same-audio A/B. The persisted audio is what makes it possible (issue #4: audio kept as a debug/tuning asset).
+
+---
+
+## C. T1 measurements — Whisper `small.en` on-device (T1.3)
+
+**Captured 2026-06-13** on the **iPhone 15 Pro Max** (8 GB, `applegpu_g16p`; `maxRecommendedWorkingSetSize` ≈ 5.73 GB), free-tier Developer Mode sideload, **without** the `increased-memory-limit` entitlement. Model: `mlx-community/whisper-small.en-fp16` (481 MB FP16) via raw `mlx-swift` 0.31.4, greedy decode, 30 s windows. Method: `MLXSmoke.run()` (`#if DEBUG`, Tuning sheet button) — the bundled `ls_test.flac` (~6.7 s LibriSpeech clip) decodes once with a substring assertion, then is tiled to 60 s / 300 s and decoded through the real file-based `transcribe(_:options:)` path. Two consecutive runs, numbers stable across both. The tiled transcript is repetitive by construction — these are **cost-vs-length** measurements, not accuracy.
+
+**Accuracy smoke:** substring check **PASS** — the 6.7 s clip decodes to *"Then the good soul openly shouldered the burden she had borne so long in secret, and bravely trudged on alone."* verbatim.
+
+### Timing
+
+| Stage | Measurement |
+|---|---|
+| Model load (safetensors `mmap`) | **59 ms** — just the mmap; real weight page-in is paid lazily inside the first forward pass |
+| Encoder, one 30 s window | ~455 ms |
+| 6.7 s clip — cold / cached | 2.1 s / 1.8 s (the ~0.3 s gap is the per-call resolve+JIT that T1.2c's in-session cache removes) |
+| **60 s note** | **13.8 s → 4.3× realtime** |
+| **300 s note** | **~80 s → 3.8× realtime** |
+
+Decode runs at ~4× realtime and is roughly flat across length. **UX consequence: a 5-minute note sits on the "Transcribing…" spinner for ~80 s at finalize.** Tolerable (and covered by the T1.2f engine-aware spinner copy), but it's the number that would justify a smaller/faster variant if it ever grates.
+
+### Memory
+
+`MLXSmoke` reports two layers: MLX's own `Memory.snapshot()` (live arrays vs. reusable buffer cache) and the OS `phys_footprint` (what iOS jetsam counts).
+
+| State | MLX active | MLX cache | MLX peak-active | OS `phys_footprint` |
+|---|---|---|---|---|
+| At rest (transcriber deallocated) | ~0 MB | 2699 MB | — | 2806 MB |
+| During 60 s decode | 464 MB | 2235 MB | 1970 MB | 2828 MB |
+| During 300 s decode | 464 MB | 2235 MB | 1581 MB | 2874 MB |
+
+What this says:
+- **Live memory is small.** Steady active settles at **~464 MB** — essentially the resident FP16 model. Transient peak-active during a decode is **~1.6–2.0 GB** (model + forward-pass activations; the 60 s > 300 s ordering is allocator-pattern noise, not a length effect — steady active and cache are identical across both lengths).
+- **The ~2.8 GB footprint is mostly reclaimable cache, not live memory.** Of the 2806 MB at-rest footprint, MLX *active* is ~0 and **2699 MB is MLX's reuse buffer pool** ("grows significantly during inference," per MLX's docs). It's resident (so jetsam counts it) but capped by the largest single computation, not unbounded.
+- **Memory is flat across note length** — footprint grows **+46 MB** going from a 1-min to a 5-min note (2828 → 2874). The windowed decode bounds peak by the 30 s window, not the recording length. Directly retires the open question in watch-item / [#1](https://github.com/AlteredCraft/relay-notes/issues/1): a long note will not blow up memory.
+
+### Battery
+
+**Not cleanly measured.** Both runs read 0.0% delta because reading `print` output requires a Xcode tether ⇒ the device is charging. The harness samples `UIDevice.batteryLevel` + `batteryState` before/after and prints an explicit caveat. Total GPU-decode work per run is only ~95 s, so the draw is small regardless. To get a real number: route the battery lines through `os_log` and read untethered via Console.app, or surface them in-UI. Deferred — not load-bearing for any current decision.
+
+### Decision
+
+**Keep `small.en` as the Whisper default — the numbers don't demand a smaller variant.** Accurate (substring PASS), ~4× realtime, fits the 8 GB device without the entitlement (confirming the 2026-06-10 validation), and memory is bounded and flat. `tiny.en` would buy speed/footprint at an accuracy cost we have no reason to pay. **First lever if jetsam headroom is ever needed** (e.g. when an L1 MLX LLM wants memory simultaneously): cap the reuse pool with `MLX.Memory.set(cacheLimit:)` — most of the footprint is reclaimable cache — *before* stepping down the model. Logged in [transcription-tuning.md](./transcription-tuning.md) Decisions log (2026-06-13).
