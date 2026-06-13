@@ -6,9 +6,13 @@ struct NotesListView: View {
     @Query(sort: \Note.createdAt, order: .reverse) private var allNotes: [Note]
 
     let searchText: String
+    /// Injected from `ContentView`; `nil` in previews/sample contexts, which
+    /// hides the per-note "Re-transcribe" control in `NoteDetailView`.
+    let reTranscriber: ReTranscriber?
 
-    init(searchText: String = "") {
+    init(searchText: String = "", reTranscriber: ReTranscriber? = nil) {
         self.searchText = searchText
+        self.reTranscriber = reTranscriber
     }
 
     private var filteredNotes: [Note] {
@@ -40,7 +44,7 @@ struct NotesListView: View {
             }
         }
         .navigationDestination(for: Note.self) { note in
-            NoteDetailView(note: note)
+            NoteDetailView(note: note, reTranscriber: reTranscriber)
         }
     }
 

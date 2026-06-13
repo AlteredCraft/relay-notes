@@ -22,6 +22,7 @@
 		B8034ECE7DE0AB51905F0833 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = A6C34CFD99CF390A32455653 /* MLX */; };
 		DA3E02B8F7270F5FA563B2FD /* RecorderPlaceholderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB99EE148BDB3FB62B72E89F /* RecorderPlaceholderTests.swift */; };
 		E6503295C37AA7BAF2CDDFB5 /* WhisperMLXTranscriberTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F439F4805AC7EB57EC25BBB0 /* WhisperMLXTranscriberTests.swift */; };
+		FEDEA01723A745D450072EA8 /* ReTranscriberTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444EF6210416D1827CE9ADFD /* ReTranscriberTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -44,6 +45,7 @@
 		22ED2C9D2FD783740066B2EC /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CLAUDE.md; sourceTree = "<group>"; };
 		22ED2CA02FD78F8C0066B2EC /* CHANGE_LOG.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CHANGE_LOG.md; sourceTree = "<group>"; };
 		338449335BA26A71B25600B4 /* WhisperModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperModelTests.swift; path = "Relay NotesTests/WhisperModelTests.swift"; sourceTree = "<group>"; };
+		444EF6210416D1827CE9ADFD /* ReTranscriberTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReTranscriberTests.swift; path = "Relay NotesTests/ReTranscriberTests.swift"; sourceTree = "<group>"; };
 		45DC85D4B123F5A6BF195D86 /* TranscriberFactoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TranscriberFactoryTests.swift; path = "Relay NotesTests/TranscriberFactoryTests.swift"; sourceTree = "<group>"; };
 		4617E8E14F9328CDED48CE87 /* WhisperAudioTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperAudioTests.swift; path = "Relay NotesTests/WhisperAudioTests.swift"; sourceTree = "<group>"; };
 		5E92287F5D8E58761D6B4913 /* WhisperModelSectionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperModelSectionTests.swift; path = "Relay NotesTests/WhisperModelSectionTests.swift"; sourceTree = "<group>"; };
@@ -147,6 +149,7 @@
 				5E92287F5D8E58761D6B4913 /* WhisperModelSectionTests.swift */,
 				6AB135C7EC8F8041E9632C5B /* NoteTests.swift */,
 				DB99EE148BDB3FB62B72E89F /* RecorderPlaceholderTests.swift */,
+				444EF6210416D1827CE9ADFD /* ReTranscriberTests.swift */,
 			);
 			name = "Relay NotesTests";
 			sourceTree = SOURCE_ROOT;
@@ -276,6 +279,7 @@
 				7B321D6F0787E8729BB8E600 /* WhisperModelSectionTests.swift in Sources */,
 				37E23E0A8B5535E4642D586E /* NoteTests.swift in Sources */,
 				DA3E02B8F7270F5FA563B2FD /* RecorderPlaceholderTests.swift in Sources */,
+				FEDEA01723A745D450072EA8 /* ReTranscriberTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

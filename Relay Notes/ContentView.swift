@@ -11,6 +11,7 @@ import SwiftUI
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: RecorderViewModel?
+    @State private var reTranscriber: ReTranscriber?
     @State private var whisperStore = WhisperModelStore()
     @State private var showSettings = false
     @State private var searchText = ""
@@ -18,7 +19,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                NotesListView(searchText: searchText)
+                NotesListView(searchText: searchText, reTranscriber: reTranscriber)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 Divider()
                 if let viewModel {
@@ -53,12 +54,17 @@ struct ContentView: View {
                 // model on disk.
                 let tunings = Tunings()
                 tunings.reconcileEngineAvailability(whisperReady: whisperStore.status == .ready)
+                // One factory shared by the recorder and the re-transcriber so a
+                // re-run reuses the already-loaded Whisper model rather than a
+                // second ~481 MB copy.
+                let factory = TranscriberFactory(whisperModelStore: whisperStore)
                 viewModel = RecorderViewModel(
                     engine: LiveAudioEngine(),
-                    transcriberFactory: TranscriberFactory(whisperModelStore: whisperStore),
+                    transcriberFactory: factory,
                     modelContext: modelContext,
                     tunings: tunings
                 )
+                reTranscriber = ReTranscriber(factory: factory, whisperStore: whisperStore)
             }
         }
     }

@@ -3,6 +3,9 @@ import SwiftUI
 
 struct NoteDetailView: View {
     @Bindable var note: Note
+    /// Injected from the list; `nil` in previews → the re-transcribe control is
+    /// hidden. Lets you re-run this note's saved audio through another engine.
+    var reTranscriber: ReTranscriber? = nil
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -10,6 +13,9 @@ struct NoteDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var titleDraft: String = ""
     @FocusState private var titleFocused: Bool
+    @State private var isReTranscribing = false
+    @State private var reOutcome: ReTranscriber.Outcome?
+    @State private var reErrorMessage: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,6 +31,7 @@ struct NoteDetailView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
+                        reTranscribeControl
                     }
                     Text(note.transcript)
                         .font(.body)
@@ -87,6 +94,75 @@ struct NoteDetailView: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("This will permanently delete the transcript and the audio file.")
+        }
+        .sheet(item: $reOutcome) { outcome in
+            ReTranscribeOutcomeSheet(
+                currentModel: note.transcriptionModel,
+                currentTranscript: note.transcript,
+                outcome: outcome,
+                onReplace: {
+                    note.transcript = outcome.transcript
+                    note.transcriptionModel = outcome.modelLabel
+                    try? modelContext.save()
+                    reOutcome = nil
+                },
+                onKeep: { reOutcome = nil }
+            )
+        }
+        .alert(
+            "Couldn't re-transcribe",
+            isPresented: Binding(
+                get: { reErrorMessage != nil },
+                set: { if !$0 { reErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(reErrorMessage ?? "")
+        }
+    }
+
+    /// "Re-transcribe with…" menu, shown only when a reprocessor is injected and
+    /// the note's audio is still on disk. While a re-run is in flight it becomes
+    /// a progress label. Re-running an engine (incl. the one that produced the
+    /// note) is allowed — useful as a spot-check, not just a cross-engine A/B.
+    @ViewBuilder
+    private var reTranscribeControl: some View {
+        if let reTranscriber, reTranscriber.audioExists(for: note) {
+            if isReTranscribing {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Re-transcribing…")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.top, 2)
+            } else {
+                Menu {
+                    ForEach(reTranscriber.availableEngines, id: \.self) { engine in
+                        Button(engine.displayName) {
+                            runReTranscribe(reTranscriber, using: engine)
+                        }
+                    }
+                } label: {
+                    Label("Re-transcribe", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.caption)
+                }
+                .padding(.top, 2)
+            }
+        }
+    }
+
+    private func runReTranscribe(_ reTranscriber: ReTranscriber, using engine: TranscriptionEngine) {
+        isReTranscribing = true
+        reErrorMessage = nil
+        Task {
+            defer { isReTranscribing = false }
+            do {
+                reOutcome = try await reTranscriber.retranscribe(note, using: engine)
+            } catch {
+                reErrorMessage = ReTranscriber.userMessage(for: error)
+            }
         }
     }
 
@@ -169,5 +245,61 @@ struct NoteDetailView: View {
         let mins = total / 60
         let secs = total % 60
         return String(format: "%d:%02d", mins, secs)
+    }
+}
+
+/// Side-by-side "current vs new" view for a re-transcription, so the engine A/B
+/// is a visible comparison before deciding. Non-destructive until "Replace".
+private struct ReTranscribeOutcomeSheet: View {
+    let currentModel: String?
+    let currentTranscript: String
+    let outcome: ReTranscriber.Outcome
+    let onReplace: () -> Void
+    let onKeep: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    transcriptSection(
+                        label: "Current — \(currentModel ?? "Unknown")",
+                        text: currentTranscript,
+                        emphasized: false
+                    )
+                    Divider()
+                    transcriptSection(
+                        label: "New — \(outcome.modelLabel)",
+                        text: outcome.transcript,
+                        emphasized: true
+                    )
+                }
+                .padding()
+            }
+            .navigationTitle("Re-transcription")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Keep original", action: onKeep)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Replace", action: onReplace)
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func transcriptSection(label: String, text: String, emphasized: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(emphasized ? Color.accentColor : .secondary)
+            Text(text.isEmpty ? "—" : text)
+                .font(.body)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+        }
     }
 }
