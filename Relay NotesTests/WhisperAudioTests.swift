@@ -45,7 +45,7 @@ struct WhisperAudioTests {
         // Pure URL-resolution logic, no MLX.
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("whisper-loc-\(UUID().uuidString)", isDirectory: true)
-        let location = WhisperModelLocation.directory(tmp)
+        let location = ModelLocation.directory(tmp)
         #expect(location.fileURL(name: "config", ext: "json") == nil)
     }
 
@@ -102,7 +102,7 @@ struct WhisperAudioTests {
         let file = tmp.appendingPathComponent("config.json")
         try Data("{}".utf8).write(to: file)
 
-        let location = WhisperModelLocation.directory(tmp)
+        let location = ModelLocation.directory(tmp)
         let resolved = try #require(location.fileURL(name: "config", ext: "json"))
         #expect(resolved.path == file.path)
     }

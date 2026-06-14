@@ -27,39 +27,34 @@ struct ReTranscriberTests {
         try? FileManager.default.removeItem(at: url)
     }
 
-    /// Writes a placeholder weights file so the store reports `.ready` without a
-    /// real 481 MB download — pure disk-presence, no MLX load.
-    private func makeReadyStore() -> (store: WhisperModelStore, dir: URL) {
+    /// A `ModelStores` whose Whisper store reports `.ready` by writing a
+    /// placeholder weights file (pure disk-presence, no real 481 MB download / MLX
+    /// load).
+    private func makeReadyStores() -> (stores: ModelStores, dir: URL) {
         let dir = makeTempDirectory()
         let weights = dir.appendingPathComponent("weights.safetensors")
         try? Data("not-real-weights".utf8).write(to: weights)
-        return (WhisperModelStore(modelDirectory: dir), dir)
+        return (ModelStores(whisper: WhisperModelStore(modelDirectory: dir)), dir)
     }
 
     // MARK: - Availability gating
-
-    @Test(arguments: [
-        (TranscriptionEngine.apple, false, true),    // Apple available even when Whisper isn't ready
-        (TranscriptionEngine.apple, true, true),     // Apple always available
-        (TranscriptionEngine.whisperMLX, false, false), // Whisper unavailable when model missing
-        (TranscriptionEngine.whisperMLX, true, true),   // Whisper available when model ready
-    ])
-    func isAvailableGatesWhisperOnReady(engine: TranscriptionEngine, whisperReady: Bool, expected: Bool) {
-        #expect(ReTranscriber.isAvailable(engine, whisperReady: whisperReady) == expected)
-    }
+    //
+    // The per-engine readiness *matrix* lives in `ModelStoresTests` (the single
+    // source of truth since T2.3); here we only confirm `availableEngines`
+    // reflects it.
 
     @Test func availableEnginesExcludesWhisperWhenModelMissing() {
         let dir = makeTempDirectory()
         defer { cleanup(dir) }
-        let store = WhisperModelStore(modelDirectory: dir)
-        let service = ReTranscriber(factory: TranscriberFactory(), whisperStore: store)
+        let stores = ModelStores(whisper: WhisperModelStore(modelDirectory: dir))
+        let service = ReTranscriber(factory: TranscriberFactory(), stores: stores)
         #expect(service.availableEngines == [.apple])
     }
 
     @Test func availableEnginesIncludesWhisperWhenModelReady() {
-        let (store, dir) = makeReadyStore()
+        let (stores, dir) = makeReadyStores()
         defer { cleanup(dir) }
-        let service = ReTranscriber(factory: TranscriberFactory(), whisperStore: store)
+        let service = ReTranscriber(factory: TranscriberFactory(), stores: stores)
         #expect(service.availableEngines == [.apple, .whisperMLX])
     }
 
@@ -81,6 +76,13 @@ struct ReTranscriberTests {
         }
     }
 
+    @Test func optionsForParakeetIsParakeetMLX() {
+        guard case .parakeetMLX = ReTranscriber.options(for: .parakeetMLX) else {
+            Issue.record("Expected .parakeetMLX options")
+            return
+        }
+    }
+
     // MARK: - Provenance labels (must match the live streaming sessions)
 
     @Test func provenanceLabelForAppleMatchesSession() {
@@ -93,6 +95,12 @@ struct ReTranscriberTests {
         // WhisperStreamingSession.modelDescription returns WhisperMLXTranscriber.modelDescription.
         #expect(ReTranscriber.provenanceLabel(for: .whisperMLX) == WhisperMLXTranscriber.modelDescription)
         #expect(ReTranscriber.provenanceLabel(for: .whisperMLX) == "Whisper (small.en)")
+    }
+
+    @Test func provenanceLabelForParakeetMatchesSession() {
+        // ParakeetStreamingSession.modelDescription returns ParakeetMLXTranscriber.modelDescription.
+        #expect(ReTranscriber.provenanceLabel(for: .parakeetMLX) == ParakeetMLXTranscriber.modelDescription)
+        #expect(ReTranscriber.provenanceLabel(for: .parakeetMLX) == "Parakeet (tdt-0.6b-v2)")
     }
 
     // MARK: - Error → user message mapping (generic + actionable; no internals)

@@ -12,7 +12,7 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: RecorderViewModel?
     @State private var reTranscriber: ReTranscriber?
-    @State private var whisperStore = WhisperModelStore()
+    @State private var stores = ModelStores()
     @State private var showSettings = false
     @State private var searchText = ""
 
@@ -42,29 +42,27 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showSettings) {
                 if let viewModel {
-                    SettingsView(tunings: viewModel.tunings, whisperStore: whisperStore)
+                    SettingsView(tunings: viewModel.tunings, stores: stores)
                 }
             }
         }
         .task {
             if viewModel == nil {
-                // A persisted `.whisperMLX` engine choice can outlive the model
-                // it needs (deleted last session, or never downloaded). Reconcile
-                // before first record so we never start a Whisper session with no
-                // model on disk.
+                // A persisted engine choice can outlive the model it needs (deleted
+                // last session, or never downloaded). Reconcile before first record
+                // so we never start an on-device session with no model on disk.
                 let tunings = Tunings()
-                tunings.reconcileEngineAvailability(whisperReady: whisperStore.status == .ready)
+                tunings.reconcileEngineAvailability(readyEngines: stores.readyEngines)
                 // One factory shared by the recorder and the re-transcriber so a
-                // re-run reuses the already-loaded Whisper model rather than a
-                // second ~481 MB copy.
-                let factory = TranscriberFactory(whisperModelStore: whisperStore)
+                // re-run reuses the already-loaded model rather than a second copy.
+                let factory = TranscriberFactory(stores: stores)
                 viewModel = RecorderViewModel(
                     engine: LiveAudioEngine(),
                     transcriberFactory: factory,
                     modelContext: modelContext,
                     tunings: tunings
                 )
-                reTranscriber = ReTranscriber(factory: factory, whisperStore: whisperStore)
+                reTranscriber = ReTranscriber(factory: factory, stores: stores)
             }
         }
     }

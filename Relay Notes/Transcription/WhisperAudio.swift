@@ -166,7 +166,7 @@ nonisolated enum WhisperAudio {
     /// Loads the precomputed mel filterbank from the given location.
     /// Shipped as `mel_filters.safetensors` (converted at staging time from
     /// `mlx-examples/whisper/mlx_whisper/assets/mel_filters.npz`).
-    static func melFilters(nMels: Int = 80, from location: WhisperModelLocation) throws -> MLXArray {
+    static func melFilters(nMels: Int = 80, from location: ModelLocation) throws -> MLXArray {
         guard nMels == 80 || nMels == 128 else {
             throw Error.unsupportedNMels(nMels)
         }
@@ -238,7 +238,7 @@ nonisolated enum WhisperAudio {
         audio: MLXArray,
         nMels: Int = 80,
         padding: Int = 0,
-        from location: WhisperModelLocation
+        from location: ModelLocation
     ) throws -> MLXArray {
         let filters = try melFilters(nMels: nMels, from: location)
         return logMelSpectrogram(audio: audio, filters: filters, padding: padding)

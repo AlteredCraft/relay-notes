@@ -3,6 +3,7 @@ import AVFoundation
 import Foundation
 import MLX
 import MLXRandom
+import UIKit
 
 /// On-device smoke for the mlx-swift runtime and the Whisper pieces as they
 /// land. Invoked from the Tuning sheet's debug section. The simulator is
@@ -10,6 +11,12 @@ import MLXRandom
 /// only does useful work on the iPhone 15 Pro Max. T1.1b-4 will replace the
 /// per-section prints with a single end-to-end transcript of the bundled WAV.
 nonisolated enum MLXSmoke {
+    /// The bundled `ls_test.flac` is a fixed LibriSpeech clip, so its decode is
+    /// deterministic. Asserting a stable substring turns the transcribe smokes
+    /// into a pass/fail check (T1.3 "assert substring") instead of an eyeball.
+    /// Matched case-insensitively against the decoded text.
+    private static let expectedSubstring = "openly shouldered the burden"
+
     static func run() async {
         runMLXHello()
         runWhisperAudio()
@@ -20,6 +27,7 @@ nonisolated enum MLXSmoke {
         runWhisperModel(modelLocation)
         await runWhisperTranscribe(modelLocation)
         await runWhisperChunked(modelLocation)
+        await runMeasurements(modelLocation)
         await runWhisperStore()
     }
 
@@ -27,7 +35,7 @@ nonisolated enum MLXSmoke {
     /// been downloaded yet. Weights live only in Application Support now (the
     /// 481 MB `weights.safetensors` is no longer copied into the app bundle).
     @MainActor
-    private static func resolveDownloadedModelLocation() -> WhisperModelLocation? {
+    private static func resolveDownloadedModelLocation() -> ModelLocation? {
         let store = WhisperModelStore()
         return store.status == .ready ? store.location : nil
     }
@@ -82,7 +90,7 @@ nonisolated enum MLXSmoke {
 
     // MARK: - T1.1b-3 — model load + encoder
 
-    private static func runWhisperModel(_ location: WhisperModelLocation?) {
+    private static func runWhisperModel(_ location: ModelLocation?) {
         print("[MLXSmoke] WhisperModel:")
         guard let location else {
             print("  model not downloaded — download it from Settings, then re-run. Skipping.")
@@ -126,7 +134,7 @@ nonisolated enum MLXSmoke {
     /// loop end-to-end on device: expect the sentence repeated ~6×, two
     /// decode windows, and a timestamp-guided restart between them (pre-T1.2d-1
     /// this clip would have transcribed only its first 30 s).
-    private static func runWhisperChunked(_ location: WhisperModelLocation?) async {
+    private static func runWhisperChunked(_ location: ModelLocation?) async {
         print("[MLXSmoke] Chunked transcribe (tiled ~36 s):")
         guard let location else {
             print("  model not downloaded — download it from Settings, then re-run. Skipping.")
@@ -142,39 +150,10 @@ nonisolated enum MLXSmoke {
             tiled.reserveCapacity(pcm.count * 6)
             for _ in 0..<6 { tiled.append(contentsOf: pcm) }
 
-            guard let format = AVAudioFormat(
-                commonFormat: .pcmFormatFloat32,
-                sampleRate: Double(WhisperAudio.sampleRate),
-                channels: 1,
-                interleaved: false
-            ), let buffer = AVAudioPCMBuffer(
-                pcmFormat: format,
-                frameCapacity: AVAudioFrameCount(tiled.count)
-            ) else {
-                print("  ERROR: couldn't allocate tiled buffer")
-                return
-            }
-            buffer.frameLength = AVAudioFrameCount(tiled.count)
-            tiled.withUnsafeBufferPointer { src in
-                buffer.floatChannelData![0].update(from: src.baseAddress!, count: tiled.count)
-            }
-
             let tmpURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("mlxsmoke-tiled.wav")
             try? FileManager.default.removeItem(at: tmpURL)
-            // Scope the writer: AVAudioFile finalizes the WAV header on
-            // deallocation, and a reader that opens the URL while the writer
-            // is still alive sees length 0 (bit us on device 2026-06-11 —
-            // `loadPCM` hit "buffer.frameCapacity != 0").
-            do {
-                let file = try AVAudioFile(
-                    forWriting: tmpURL,
-                    settings: format.settings,
-                    commonFormat: .pcmFormatFloat32,
-                    interleaved: false
-                )
-                try file.write(from: buffer)
-            }
+            try writeWAV(pcm: tiled, to: tmpURL)
             defer { try? FileManager.default.removeItem(at: tmpURL) }
 
             let transcriber = WhisperMLXTranscriber(fallbackLocation: location)
@@ -187,6 +166,199 @@ nonisolated enum MLXSmoke {
         } catch {
             print("  ERROR: \(error)")
         }
+    }
+
+    // MARK: - T1.3 — load / decode / peak-memory / battery measurements
+
+    /// Decodes the bundled fixture tiled to 1-min and 5-min lengths, capturing
+    /// decode wall-time, peak `phys_footprint`, and a coarse battery delta on
+    /// the iPhone 15 Pro Max. Produces the T1.3 measurement table in one run;
+    /// the numbers land in `notes.md` § "T1 measurements" + a Decisions-log row.
+    ///
+    /// The transcript is repetitive by construction (one ~6.7 s clip tiled) —
+    /// this measures decode *cost vs length*, not accuracy (accuracy is the
+    /// substring check in `runWhisperTranscribe`).
+    private static func runMeasurements(_ location: ModelLocation?) async {
+        print("[MLXSmoke] T1.3 measurements:")
+        guard let location else {
+            print("  model not downloaded — download it from Settings, then re-run. Skipping.")
+            return
+        }
+        guard let flacURL = Bundle.main.url(forResource: "ls_test", withExtension: "flac") else {
+            print("  ls_test.flac NOT FOUND — skipping measurements")
+            return
+        }
+        do {
+            let basePCM = try WhisperAudio.loadPCM(url: flacURL)
+
+            // Battery: coarse (the OS reports level in ~1–5% steps) and
+            // meaningless while charging — and reading this console output
+            // usually means tethered to Xcode, i.e. charging. Captured anyway
+            // per the T1.3 ask; interpret with the state + caveat below.
+            let battery = await MainActor.run { () -> (level: Float, state: String) in
+                UIDevice.current.isBatteryMonitoringEnabled = true
+                return (UIDevice.current.batteryLevel, batteryStateString(UIDevice.current.batteryState))
+            }
+            // Decompose memory: MLX `activeMemory` is live arrays (model +
+            // current activations); `cacheMemory` is MLX's reusable buffer pool
+            // (freed buffers it holds for reuse — "grows significantly during
+            // inference," per MLX's own docs). The OS `phys_footprint` ≈ active
+            // + cache + non-MLX app memory, and is what iOS jetsam counts. The
+            // baseline is captured *after* the earlier smoke sections, so its
+            // cache is already warm — the point of showing the split.
+            let baseSnap = MLX.Memory.snapshot()
+            print("  MLX active / cache base    = \(formatBytes(baseSnap.activeMemory)) / \(formatBytes(baseSnap.cacheMemory))")
+            print("  process footprint baseline = \(formatBytes(residentFootprintBytes()))")
+            print("  battery start              = \(batteryString(battery.level)) (state: \(battery.state))")
+
+            let wallStart = Date()
+            // One transcriber across both lengths, matching the recorder (which
+            // holds a single cached-model instance). The 60 s pass therefore
+            // also pays the cold model load + Metal shader JIT.
+            let transcriber = WhisperMLXTranscriber(fallbackLocation: location)
+            for seconds in [60, 300] {
+                try await measureDecode(seconds: seconds, basePCM: basePCM, transcriber: transcriber)
+            }
+            let wallElapsed = Int(Date().timeIntervalSince(wallStart))
+
+            let endLevel = await MainActor.run { UIDevice.current.batteryLevel }
+            print("  battery end                = \(batteryString(endLevel))")
+            print("  battery delta              = \(batteryDeltaString(from: battery.level, to: endLevel)) over ~\(wallElapsed)s wall")
+            print("  NOTE: battery delta is unreliable while charging — unplug + read via Console.app for a real number")
+        } catch {
+            print("  ERROR: \(error)")
+        }
+    }
+
+    /// Tiles `basePCM` to `seconds`, writes a temp WAV, decodes it through the
+    /// real file-based path, and reports decode time, realtime factor, and the
+    /// peak resident footprint sampled during the decode.
+    private static func measureDecode(
+        seconds: Int,
+        basePCM: [Float],
+        transcriber: WhisperMLXTranscriber
+    ) async throws {
+        let target = seconds * WhisperAudio.sampleRate
+        var pcm: [Float] = []
+        pcm.reserveCapacity(target)
+        while pcm.count < target { pcm.append(contentsOf: basePCM) }
+        pcm = Array(pcm.prefix(target))
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mlxsmoke-\(seconds)s.wav")
+        try? FileManager.default.removeItem(at: url)
+        try writeWAV(pcm: pcm, to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // Poll the process footprint while the decode runs (off the actor, so
+        // it samples freely during the GPU-bound transcribe) and keep the max.
+        let sampler = PeakMemorySampler()
+        let poll = Task {
+            while !Task.isCancelled {
+                await sampler.record(residentFootprintBytes())
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+
+        // Reset MLX's peak-active high-water so `peakMemory` below is attributable
+        // to *this* decode, not the program-lifetime max.
+        MLX.GPU.resetPeakMemory()
+        let start = Date()
+        let transcript = try await transcriber.transcribe(url, options: .whisperMLX)
+        let decodeMs = Int(Date().timeIntervalSince(start) * 1000)
+        poll.cancel()
+        let peak = await sampler.peak
+        let snap = MLX.Memory.snapshot()
+
+        let realtime = Double(seconds) / (Double(decodeMs) / 1000.0)
+        print("  ── \(seconds)s note ──")
+        print("    decode time              = \(decodeMs) ms (\(String(format: "%.1f", realtime))× realtime)")
+        print("    MLX active / cache       = \(formatBytes(snap.activeMemory)) / \(formatBytes(snap.cacheMemory))")
+        print("    MLX peak active          = \(formatBytes(snap.peakMemory))")
+        print("    peak process footprint   = \(formatBytes(peak))")
+        print("    transcript chars         = \(transcript.count)")
+    }
+
+    /// Tracks the max `phys_footprint` observed across `record` calls. An actor
+    /// so the polling task and the final read don't race the running decode.
+    private actor PeakMemorySampler {
+        private(set) var peak: UInt64 = 0
+        func record(_ value: UInt64?) {
+            if let value, value > peak { peak = value }
+        }
+    }
+
+    /// Current process physical memory footprint (the figure Xcode's memory
+    /// gauge shows), via `task_info(TASK_VM_INFO)`. `nil` if the call fails.
+    private static func residentFootprintBytes() -> UInt64? {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(
+            MemoryLayout<task_vm_info_data_t>.stride / MemoryLayout<integer_t>.stride
+        )
+        let kr = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        return kr == KERN_SUCCESS ? info.phys_footprint : nil
+    }
+
+    private static func formatBytes(_ bytes: UInt64?) -> String {
+        guard let bytes else { return "unavailable" }
+        return String(format: "%.1f MB", Double(bytes) / (1024 * 1024))
+    }
+
+    /// `Int` overload for MLX's memory counters (which report signed byte counts).
+    private static func formatBytes(_ bytes: Int) -> String {
+        formatBytes(UInt64(max(0, bytes)))
+    }
+
+    private static func batteryString(_ level: Float) -> String {
+        level < 0 ? "unavailable" : String(format: "%.0f%%", level * 100)
+    }
+
+    private static func batteryDeltaString(from start: Float, to end: Float) -> String {
+        guard start >= 0, end >= 0 else { return "unavailable" }
+        return String(format: "%.1f%%", (start - end) * 100)
+    }
+
+    private static func batteryStateString(_ state: UIDevice.BatteryState) -> String {
+        switch state {
+        case .charging: "charging"
+        case .full: "full"
+        case .unplugged: "unplugged"
+        case .unknown: "unknown"
+        @unknown default: "unknown"
+        }
+    }
+
+    /// Writes mono 16 kHz Float32 PCM to a WAV at `url`. The writer is scoped so
+    /// `AVAudioFile` finalizes the header before any reader opens the URL — a
+    /// reader racing a live writer sees length 0 (bit us on device 2026-06-11,
+    /// `loadPCM` hit "buffer.frameCapacity != 0").
+    private static func writeWAV(pcm: [Float], to url: URL) throws {
+        guard let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: Double(WhisperAudio.sampleRate),
+            channels: 1,
+            interleaved: false
+        ), let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: AVAudioFrameCount(pcm.count)
+        ) else {
+            throw WhisperAudio.Error.audioBufferAllocationFailed
+        }
+        buffer.frameLength = AVAudioFrameCount(pcm.count)
+        pcm.withUnsafeBufferPointer { src in
+            buffer.floatChannelData![0].update(from: src.baseAddress!, count: pcm.count)
+        }
+        let file = try AVAudioFile(
+            forWriting: url,
+            settings: format.settings,
+            commonFormat: .pcmFormatFloat32,
+            interleaved: false
+        )
+        try file.write(from: buffer)
     }
 
     // MARK: - T1.2b — WhisperModelStore presence + asset staging
@@ -222,7 +394,7 @@ nonisolated enum MLXSmoke {
     /// Two passes through the *same* transcriber instance: the first pays
     /// model load + shader JIT, the second should show T1.2c's asset cache
     /// (expect the gap to be roughly the old per-call load cost).
-    private static func runWhisperTranscribe(_ location: WhisperModelLocation?) async {
+    private static func runWhisperTranscribe(_ location: ModelLocation?) async {
         print("[MLXSmoke] WhisperMLXTranscriber:")
         guard let location else {
             print("  model not downloaded — download it from Settings, then re-run. Skipping.")
@@ -240,6 +412,8 @@ nonisolated enum MLXSmoke {
             let coldMs = Int(Date().timeIntervalSince(coldStart) * 1000)
             print("  transcribe time (cold)     = \(coldMs) ms")
             print("  transcript                 = '\(transcript)'")
+            let passed = transcript.lowercased().contains(expectedSubstring)
+            print("  substring check            = \(passed ? "PASS" : "FAIL") (expected '…\(expectedSubstring)…')")
 
             let warmStart = Date()
             _ = try await transcriber.transcribe(flacURL, options: options)
