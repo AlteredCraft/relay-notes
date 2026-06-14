@@ -59,7 +59,7 @@ the overlap region (decoded by one chunk only, the merge uninvolved); it's edge-
 recognition variance from the deliberately tiny smoke window, not a merge defect, and is largely
 moot at the 120 s/15 s production default. **Nothing in T2.1 remains.** Next is the
 provider-spine wiring (T2.2–T2.5).
-| **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ✅ code-complete 2026-06-13; sim-validated (spec + readiness + integrity helper); fresh-download integrity device-pending; background `URLSession` deferred (open-Q #6) |
+| **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ✅ done 2026-06-13; **store-wired smoke green on device** (readiness/already-present path); sim-validated (spec + readiness + integrity helper); only *fresh*-download integrity device-unrun (files present → `.ready` fast path); background `URLSession` deferred (open-Q #6) |
 | **T2.3** | Per-engine gating (retire the single `whisperReady` Bool) | ⬜ |
 | **T2.4** | Factory: single live MLX engine (evict on switch) | ⬜ |
 | **T2.5** | Wire engine end-to-end (enum/options/factory/UI/provenance/tests) | ⬜ |
@@ -588,11 +588,14 @@ For each: **goal · do · validate · gotchas · done-when.**
   `WhisperModelStoreTests` green; build + full suite green.
 - **Deferred:** true background `URLSession` (§3.4 / open-Q #6) — resume-on-stall covers the
   observed failure for the foregrounded one-time download.
-- **Validate (pending):** a *fresh* integrity-checked Parakeet download (the device already has
-  the files → `.ready` fast path). To exercise it: delete the bundle on-device, run the smoke,
-  confirm download + SHA-256 verify.
+- **Device-validated 2026-06-13 (iPhone 15 Pro Max):** the store-wired `ParakeetSmoke` ran green —
+  `ParakeetModelStore` resolved the directory + detected readiness (both remote files present) via
+  the new multi-file check and ran the full T2.1b/d/e pipeline (substring PASS, chunking PASS).
+- **Still device-unrun:** a *fresh* integrity-checked download (the device had the files → `.ready`
+  fast path). To exercise: delete the bundle on-device, run the smoke, confirm download + SHA-256 verify.
 - **Done-when:** ✅ both models resolve through one store type with integrity check + generic error
-  UX (the spec/readiness/integrity-helper paths are unit-validated; fresh download is device-runnable).
+  UX (spec/readiness/integrity-helper unit-validated; readiness path device-confirmed; fresh download
+  device-runnable on demand).
 
 ### T2.3 — Per-engine gating
 - **Do:** replace the single `whisperReady: Bool` with per-engine readiness. Touches
