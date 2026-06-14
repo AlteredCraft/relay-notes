@@ -118,14 +118,18 @@ final class Tunings {
         whisper = WhisperSettings()
     }
 
-    /// Enforces the invariant that Whisper can only be the selected engine
-    /// while its model is present on disk. If Whisper is selected but the model
-    /// isn't ready, fall back to Apple (always available). Single source of
-    /// truth for the rule — called at launch (a persisted `.whisperMLX` choice
-    /// can outlive a deleted model) and right after a model delete. No-op when
-    /// Apple is selected or the model is ready.
-    func reconcileEngineAvailability(whisperReady: Bool) {
-        if engine == .whisperMLX && !whisperReady {
+    /// Enforces the invariant that a model-backed engine can only be the selected
+    /// engine while its model is present on disk. If the selected engine isn't in
+    /// `readyEngines`, fall back to Apple (which has no model and is always ready,
+    /// so it's always present in the set). Single source of truth for the rule —
+    /// called at launch (a persisted engine choice can outlive a deleted model)
+    /// and right after a model delete.
+    ///
+    /// Per-engine since T2.3: `readyEngines` comes from `ModelStores.readyEngines`,
+    /// so adding an on-device engine needs no change here — the new engine is
+    /// simply absent from the set until its model downloads.
+    func reconcileEngineAvailability(readyEngines: Set<TranscriptionEngine>) {
+        if !readyEngines.contains(engine) {
             engine = .apple
         }
     }

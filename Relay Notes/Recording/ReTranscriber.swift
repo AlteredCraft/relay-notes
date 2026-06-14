@@ -36,21 +36,21 @@ final class ReTranscriber {
 
     @ObservationIgnored
     private let factory: TranscriberFactory
-    private let whisperStore: WhisperModelStore
+    private let stores: ModelStores
 
-    init(factory: TranscriberFactory, whisperStore: WhisperModelStore) {
+    init(factory: TranscriberFactory, stores: ModelStores) {
         self.factory = factory
-        self.whisperStore = whisperStore
+        self.stores = stores
     }
 
     /// Engines available to re-transcribe into right now. Apple is always
-    /// available; Whisper only when its model is downloaded — the same
-    /// engine-availability invariant the recorder enforces
-    /// (`Tunings.reconcileEngineAvailability`). Reads `whisperStore.status`, so a
-    /// SwiftUI menu built from this updates when the model is downloaded/deleted.
+    /// available; a model-backed engine only when its model is downloaded — the
+    /// same engine-availability invariant the recorder enforces
+    /// (`Tunings.reconcileEngineAvailability`). Reads through `ModelStores` to the
+    /// observed store statuses, so a SwiftUI menu built from this updates when a
+    /// model is downloaded/deleted.
     var availableEngines: [TranscriptionEngine] {
-        let whisperReady = whisperStore.status == .ready
-        return TranscriptionEngine.allCases.filter { Self.isAvailable($0, whisperReady: whisperReady) }
+        TranscriptionEngine.allCases.filter { stores.isReady($0) }
     }
 
     /// Whether the note's audio still exists on disk. Older notes whose file was
@@ -74,15 +74,6 @@ final class ReTranscriber {
     }
 
     // MARK: - Pure helpers
-
-    /// `nonisolated` — touches no actor-isolated state, so it's callable from
-    /// anywhere (and from the parameterized test without a MainActor hop).
-    nonisolated static func isAvailable(_ engine: TranscriptionEngine, whisperReady: Bool) -> Bool {
-        switch engine {
-        case .apple: return true
-        case .whisperMLX: return whisperReady
-        }
-    }
 
     /// Each engine's *default* options — not the user's live `Tunings`. A re-run
     /// is an A/B against a clean baseline, so it shouldn't depend on whatever

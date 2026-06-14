@@ -22,6 +22,7 @@
 		973F46D10FF15784BEAD20F6 /* MLXRandom in Frameworks */ = {isa = PBXBuildFile; productRef = B1D487B9F07A0DB95BD79522 /* MLXRandom */; };
 		9C8B28FADF29E62CC1D52D00 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = 9A2C4347C3F5928735C6784F /* MLXNN */; };
 		B437821D1676E919572316D1 /* WhisperModelStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A08A2616E8FB1A6AA892A1 /* WhisperModelStoreTests.swift */; };
+		B48E8531807797F3F698D47E /* ModelStoresTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43455944560607C219EBB257 /* ModelStoresTests.swift */; };
 		B8034ECE7DE0AB51905F0833 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = A6C34CFD99CF390A32455653 /* MLX */; };
 		C1FA99170038C27FD5513069 /* ParakeetTokenizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C4726B4B1C7A61B5EE2DC35 /* ParakeetTokenizerTests.swift */; };
 		DA3E02B8F7270F5FA563B2FD /* RecorderPlaceholderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB99EE148BDB3FB62B72E89F /* RecorderPlaceholderTests.swift */; };
@@ -51,6 +52,7 @@
 		22ED2C9D2FD783740066B2EC /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CLAUDE.md; sourceTree = "<group>"; };
 		22ED2CA02FD78F8C0066B2EC /* CHANGE_LOG.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CHANGE_LOG.md; sourceTree = "<group>"; };
 		338449335BA26A71B25600B4 /* WhisperModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperModelTests.swift; path = "Relay NotesTests/WhisperModelTests.swift"; sourceTree = "<group>"; };
+		43455944560607C219EBB257 /* ModelStoresTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelStoresTests.swift; path = "Relay NotesTests/ModelStoresTests.swift"; sourceTree = "<group>"; };
 		444EF6210416D1827CE9ADFD /* ReTranscriberTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReTranscriberTests.swift; path = "Relay NotesTests/ReTranscriberTests.swift"; sourceTree = "<group>"; };
 		45DC85D4B123F5A6BF195D86 /* TranscriberFactoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TranscriberFactoryTests.swift; path = "Relay NotesTests/TranscriberFactoryTests.swift"; sourceTree = "<group>"; };
 		4617E8E14F9328CDED48CE87 /* WhisperAudioTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperAudioTests.swift; path = "Relay NotesTests/WhisperAudioTests.swift"; sourceTree = "<group>"; };
@@ -162,6 +164,7 @@
 				9C4726B4B1C7A61B5EE2DC35 /* ParakeetTokenizerTests.swift */,
 				C62BCB3CCCC0F2AE166CA30B /* ParakeetChunkingTests.swift */,
 				115822FF05D582F9D6203B1C /* DownloadableModelStoreTests.swift */,
+				43455944560607C219EBB257 /* ModelStoresTests.swift */,
 			);
 			name = "Relay NotesTests";
 			sourceTree = SOURCE_ROOT;
@@ -296,6 +299,7 @@
 				C1FA99170038C27FD5513069 /* ParakeetTokenizerTests.swift in Sources */,
 				378AE83774DB6E93C028DE46 /* ParakeetChunkingTests.swift in Sources */,
 				7BCA85A1AFA2BADD977707BC /* DownloadableModelStoreTests.swift in Sources */,
+				B48E8531807797F3F698D47E /* ModelStoresTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

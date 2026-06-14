@@ -4,7 +4,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var tunings: Tunings
-    let whisperStore: WhisperModelStore
+    let stores: ModelStores
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
@@ -24,8 +24,8 @@ struct SettingsView: View {
 
                 // Always shown — provisions Whisper *before* it can be selected
                 // (the engine row above is disabled until the model is ready).
-                WhisperModelSection(store: whisperStore) {
-                    tunings.reconcileEngineAvailability(whisperReady: false)
+                WhisperModelSection(store: stores.whisper) {
+                    tunings.reconcileEngineAvailability(readyEngines: stores.readyEngines)
                 }
 
                 // Engine-specific recognition settings swap with the selection
@@ -73,7 +73,7 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
 
-            let whisperReady = whisperStore.status == .ready
+            let whisperReady = stores.isReady(.whisperMLX)
             Button {
                 tunings.engine = .whisperMLX
             } label: {
@@ -170,6 +170,6 @@ struct SettingsView: View {
 }
 
 #Preview {
-    SettingsView(tunings: Tunings(), whisperStore: WhisperModelStore())
+    SettingsView(tunings: Tunings(), stores: ModelStores())
         .modelContainer(for: Note.self, inMemory: true)
 }

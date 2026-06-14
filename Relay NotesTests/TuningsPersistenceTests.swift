@@ -63,7 +63,8 @@ struct TuningsPersistenceTests {
         let tunings = Tunings(defaults: makeDefaults())
         tunings.engine = .whisperMLX
 
-        tunings.reconcileEngineAvailability(whisperReady: false)
+        // Whisper absent from the ready set (only Apple, which has no model).
+        tunings.reconcileEngineAvailability(readyEngines: [.apple])
 
         #expect(tunings.engine == .apple)
     }
@@ -72,7 +73,7 @@ struct TuningsPersistenceTests {
         let tunings = Tunings(defaults: makeDefaults())
         tunings.engine = .whisperMLX
 
-        tunings.reconcileEngineAvailability(whisperReady: true)
+        tunings.reconcileEngineAvailability(readyEngines: [.apple, .whisperMLX])
 
         #expect(tunings.engine == .whisperMLX)
     }
@@ -81,7 +82,7 @@ struct TuningsPersistenceTests {
         let tunings = Tunings(defaults: makeDefaults())
         tunings.engine = .apple
 
-        tunings.reconcileEngineAvailability(whisperReady: false)
+        tunings.reconcileEngineAvailability(readyEngines: [.apple])
 
         #expect(tunings.engine == .apple)
     }
