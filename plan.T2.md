@@ -59,7 +59,7 @@ the overlap region (decoded by one chunk only, the merge uninvolved); it's edge-
 recognition variance from the deliberately tiny smoke window, not a merge defect, and is largely
 moot at the 120 s/15 s production default. **Nothing in T2.1 remains.** Next is the
 provider-spine wiring (T2.2–T2.5).
-| **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ⬜ |
+| **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ✅ code-complete 2026-06-13; sim-validated (spec + readiness + integrity helper); fresh-download integrity device-pending; background `URLSession` deferred (open-Q #6) |
 | **T2.3** | Per-engine gating (retire the single `whisperReady` Bool) | ⬜ |
 | **T2.4** | Factory: single live MLX engine (evict on switch) | ⬜ |
 | **T2.5** | Wire engine end-to-end (enum/options/factory/UI/provenance/tests) | ⬜ |
@@ -87,8 +87,16 @@ provider-spine wiring (T2.2–T2.5).
   substring gate + peak). `run()` now does featurizer→decode; T2.1a/T2.1c retained, not auto-run.
 - `Relay NotesTests/ParakeetConfigTests.swift` — 5 config-decode tests (added explicit-null preemph).
 - `Relay Notes/Views/SettingsView.swift` — "Run Parakeet smoke (console)" debug button.
-- `Relay Notes/Transcription/WhisperModelStore.swift` — `DownloadCoordinator` hardened
-  (300 s request timeout, `waitsForConnectivity`, made `internal`).
+  (T2.2: `ParakeetSmoke.ensureModelDownloaded` now uses the real `ParakeetModelStore`.)
+- `Relay Notes/Transcription/DownloadableModelStore.swift` — **T2.2** generic spec-driven
+  store: `ModelDownloadSpec` (+ `.whisperSmallEn`/`.parakeetTDT06bV2`), `DownloadableModelStore`
+  (N remote files, per-file SHA-256+size verify, byte-weighted progress), and the
+  `DownloadCoordinator` (now resume/retry on transient failure, §3.4).
+- `Relay Notes/Transcription/WhisperModelStore.swift` — **T2.2** now a thin
+  `DownloadableModelStore` subclass bound to `.whisperSmallEn` (keeps the no-arg init +
+  back-compat statics). `Relay Notes/Transcription/Parakeet/ParakeetModelStore.swift` —
+  subclass bound to `.parakeetTDT06bV2`. `Relay NotesTests/DownloadableModelStoreTests.swift`
+  — 6 sim-safe tests (spec pinning, multi-file readiness, delete, subdir composition).
 
 **Device facts established (iPhone 15 Pro Max, 2026-06-13):**
 - Config parses; download intact (2357 MB on disk); `loadArrays` is **lazy** (38 MB after load).
@@ -164,11 +172,18 @@ iterations so the last line localizes a crash.
 
 The weights are served via HF's **Xet CDN** (`cas-bridge.xethub.hf.co`) and large
 single-stream downloads stall. The default 60 s `timeoutIntervalForRequest` aborts the whole
-transfer on one stall. `DownloadCoordinator` is now hardened (300 s request timeout,
-`waitsForConnectivity`). **T2.2 must additionally add:** resume from
-`NSURLSessionDownloadTaskResumeData` on `-1001`/drops, a **background `URLSession`** (the
-download is multi-minute and the app may background), and reuse the typed
-`FailureReason`→generic-actionable-UI-message pattern (`WhisperModelSection.failureMessage`).
+transfer on one stall. `DownloadCoordinator` is hardened (300 s request timeout,
+`waitsForConnectivity`).
+
+**Status (T2.2):** ✅ **resume/retry added** — on a transient failure the coordinator
+re-issues up to 5×, resuming from `NSURLSessionDownloadTaskResumeData` when the server supports
+range requests (HF Xet/S3 does) so a `-1001` stall doesn't discard on-disk bytes, else restarting
+the file; the typed `FailureReason`→generic-actionable-message UX is reused as-is. ⏸️ **The
+background `URLSession` is deferred** (open-Q #6): for a one-time, app-foregrounded sideload
+download, resume-on-stall covers the observed failure, and a background session's relaunch
+lifecycle (persisted state, `handleEventsForBackgroundURLSession`, a continuation that can't
+survive app suspension) is disproportionate for v1. Revisit if the download UX ever needs to
+survive backgrounding.
 
 ### 3.5 Provider-abstraction spine is load-bearing — preserve it
 
@@ -561,17 +576,23 @@ For each: **goal · do · validate · gotchas · done-when.**
   (the 50 %-overlap smoke setting re-encodes more; ~12 % at production overlap).
 - **Done-when:** ✅ `runChunked` PASS on device.
 
-### T2.2 — Generalize the download store
-- **Do:** extract the generic machinery from `WhisperModelStore` into
-  `DownloadableModelStore(spec:)` where a spec = {remote files [{url, sha256, size}], bundled
-  files, subdirectory, weights filename}. `WhisperModelStore` becomes `spec: .whisperSmallEn`;
-  Parakeet gets `spec: .parakeetTDT06bV2` (manifest: `model.safetensors` 2.47 GB + `config.json`;
-  no separate bundled assets needed — Parakeet config is downloaded, not bundled, unlike Whisper).
-  Pin a SHA-256 for the Parakeet weights. **Add the §3.4 robustness** (resume, background session).
-  Replace the throwaway downloader in `ParakeetSmoke` with the store. Update `WhisperModelStoreTests`.
-- **Validate:** both models download/verify/delete via one store type; simulator tests green.
-- **Done-when:** Parakeet weights download through the real store with integrity check + a generic
-  error UX.
+### T2.2 — Generalize the download store ✅ code-complete (fresh-download integrity device-pending)
+- **Done:** `DownloadableModelStore.swift` — `ModelDownloadSpec` = `{ subdirectory, remoteFiles
+  [{url, sha256, size, destFilename}], bundledFiles, downloadSizeMB }`, the generic
+  `DownloadableModelStore` (N remote files, per-file SHA-256+size verify, byte-weighted progress,
+  readiness = all remote files present), and the `DownloadCoordinator` (resume/retry, §3.4).
+  `WhisperModelStore`/`ParakeetModelStore` are thin subclasses binding `.whisperSmallEn` /
+  `.parakeetTDT06bV2`. Parakeet manifest **pinned to commit `b8e276dc…`**: `model.safetensors`
+  sha `b958c37a…`/2 471 559 904 B (LFS oid), `config.json` sha `9bd323e6…`/36 176 B. `ParakeetSmoke`
+  now downloads via the real store. 6 sim-safe `DownloadableModelStoreTests` + unchanged
+  `WhisperModelStoreTests` green; build + full suite green.
+- **Deferred:** true background `URLSession` (§3.4 / open-Q #6) — resume-on-stall covers the
+  observed failure for the foregrounded one-time download.
+- **Validate (pending):** a *fresh* integrity-checked Parakeet download (the device already has
+  the files → `.ready` fast path). To exercise it: delete the bundle on-device, run the smoke,
+  confirm download + SHA-256 verify.
+- **Done-when:** ✅ both models resolve through one store type with integrity check + generic error
+  UX (the spec/readiness/integrity-helper paths are unit-validated; fresh download is device-runnable).
 
 ### T2.3 — Per-engine gating
 - **Do:** replace the single `whisperReady: Bool` with per-engine readiness. Touches
@@ -626,8 +647,13 @@ For each: **goal · do · validate · gotchas · done-when.**
    tiled-clip device smoke (`ParakeetSmoke.runChunked`, whole-clip vs chunked) is the final
    confirmation that boundaries don't drop/dup words.
 4. **bf16 vs a pre-converted on-disk format** — we cast F32→bf16 at load each launch (~fast, lazy). If
-   load time grates, consider converting once to a bf16 safetensors on disk (T2.2 could own this), so
-   subsequent loads mmap bf16 directly (~1.2 GB, no cast). Not needed for v1.
+   load time grates, consider converting once to a bf16 safetensors on disk (a later optimization, e.g.
+   in `ParakeetMLXTranscriber`'s load), so subsequent loads mmap bf16 directly (~1.2 GB, no cast). Not
+   needed for v1.
 5. **Accuracy ladder validation** — once selectable (T2.5), run the same audio through Apple/Whisper/
    Parakeet via `NoteDetailView`'s re-transcribe (the A/B substrate) to confirm Parakeet earns its place.
+6. **Background `URLSession` for downloads** (§3.4) — **deferred in T2.2.** The store has resume/retry
+   (covers the observed mid-transfer `-1001` stall on the foregrounded download); a true background
+   session that survives app suspension/relaunch is disproportionate complexity for the v1 one-time
+   sideload download. Revisit if the download UX needs to continue while backgrounded.
 ```

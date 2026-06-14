@@ -101,7 +101,7 @@ struct WhisperModelSection: View {
     /// Maps an internal `FailureReason` to **generic, actionable** user copy.
     /// Deliberately drops the diagnostic detail the reason carries (HTTP status
     /// codes, missing asset names) — that stays in logs, never in the UI.
-    static func failureMessage(for reason: WhisperModelStore.FailureReason) -> String {
+    static func failureMessage(for reason: DownloadableModelStore.FailureReason) -> String {
         switch reason {
         case .network:
             return "Couldn't download the model. Check your connection and try again."

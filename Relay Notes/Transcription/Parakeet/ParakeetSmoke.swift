@@ -2,7 +2,6 @@
 import Foundation
 import MLX
 import OSLog
-import Synchronization
 
 /// On-device smoke for the Parakeet (TDT 0.6b v2) port as it lands, mirroring
 /// `MLXSmoke` for Whisper. Invoked from the Tuning sheet's debug section. The
@@ -15,7 +14,7 @@ import Synchronization
 /// the Xcode debug session and was lost when the first run OOM'd.
 ///
 /// **T2.1a — the first section.** Brings the 2.47 GB safetensors onto the device
-/// (a throwaway `URLSession` fetch — the real downloadable-model store is T2.2),
+/// (via the real `ParakeetModelStore` since T2.2 — SHA-256-verified, resume-on-stall),
 /// confirms `ParakeetConfig` decodes the real `config.json`, dumps the collapsed
 /// key namespace + dtype (pure metadata — logged *before* any materialization so
 /// it survives even if the cast OOMs), then casts F32→bf16 **incrementally with
@@ -31,13 +30,6 @@ import Synchronization
 /// bf16 at once (~3.7 GB) and OOMs the 8 GB device at the ~3 GB no-entitlement
 /// ceiling — observed here as a jetsam kill at ~3.1 GB before the fix.
 nonisolated enum ParakeetSmoke {
-
-    // MARK: - Source (pinned to a public mlx-community repo; DEBUG dev fetch only)
-
-    static let weightsURL = URL(string:
-        "https://huggingface.co/mlx-community/parakeet-tdt-0.6b-v2/resolve/main/model.safetensors")!
-    static let configURL = URL(string:
-        "https://huggingface.co/mlx-community/parakeet-tdt-0.6b-v2/resolve/main/config.json")!
 
     private static let log = Logger(subsystem: "alteredcraft.Relay-Notes", category: "ParakeetSmoke")
 
@@ -531,55 +523,50 @@ nonisolated enum ParakeetSmoke {
         say("=== T2.1a END ===")
     }
 
-    // MARK: - Download bridge (DEBUG-only; replaced by DownloadableModelStore in T2.2)
+    // MARK: - Download bridge (DEBUG-only; now the real DownloadableModelStore)
 
-    /// Idempotently fetches `config.json` + `model.safetensors` into
-    /// `Application Support/parakeet/tdt-0.6b-v2/`. No SHA pin — that's T2.2's
-    /// job; this just gets bytes on the device for the smoke.
+    /// Brings the Parakeet bundle onto the device via the **real**
+    /// `ParakeetModelStore` (T2.2) — SHA-256-verified `model.safetensors` +
+    /// `config.json`, resume-on-stall, generic error UX — replacing the old
+    /// throwaway URLSession fetch. Returns the model directory once present.
+    ///
+    /// `@MainActor`: the store is `@MainActor`; the nonisolated smoke entry points
+    /// await this and the store value never leaves the main actor.
+    @MainActor
     static func ensureModelDownloaded() async throws -> URL {
-        let fm = FileManager.default
-        let appSupport = try fm.url(
-            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-        let dir = appSupport.appendingPathComponent("parakeet/tdt-0.6b-v2", isDirectory: true)
-        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-
-        let configDest = dir.appendingPathComponent("config.json")
-        if !fm.fileExists(atPath: configDest.path) {
-            say("downloading config.json…")
-            let (tmp, _) = try await URLSession.shared.download(from: configURL)
-            try? fm.removeItem(at: configDest)
-            try fm.moveItem(at: tmp, to: configDest)
+        let store = ParakeetModelStore()
+        if store.status == .ready {
+            say("model already present at \(store.modelDirectory.path)")
+            return store.modelDirectory
         }
 
-        let weightsDest = dir.appendingPathComponent("model.safetensors")
-        if !fm.fileExists(atPath: weightsDest.path) {
-            say("downloading model.safetensors (~2.5 GB, one-time, several minutes)…")
-            // Reuse the Whisper download machinery (widened timeouts +
-            // waitsForConnectivity + progress) rather than a bare
-            // URLSession.shared.download — the latter aborted on a transient
-            // HF-Xet CDN stall (60 s request timeout). Keep the device awake and
-            // the app foregrounded for the duration.
-            let coordinator = DownloadCoordinator()
-            let lastPct = Mutex(-5)
-            let tmp = try await coordinator.download(from: weightsURL) { frac in
-                let pct = Int(frac * 100)
-                let emit = lastPct.withLock { last -> Bool in
-                    if pct >= last + 5 { last = pct; return true }
-                    return false
+        say("model not present (or incomplete) — downloading via ParakeetModelStore (SHA-256-verified)…")
+        // The store updates `status`; the smoke isn't a SwiftUI observer, so poll
+        // it for a coarse progress log (every ~5%). Keep the device awake and the
+        // app foregrounded for the multi-minute 2.5 GB transfer.
+        let poll = Task { @MainActor in
+            var last = -5
+            while !Task.isCancelled {
+                if case let .downloading(p) = store.status {
+                    let pct = Int(p * 100)
+                    if pct >= last + 5 {
+                        last = pct
+                        say("  downloading… \(pct)%")
+                    }
                 }
-                if emit { say("  downloading… \(pct)%") }
+                try? await Task.sleep(for: .seconds(1))
             }
-            try? fm.removeItem(at: weightsDest)
-            try fm.moveItem(at: tmp, to: weightsDest)
-            var u = weightsDest
-            var values = URLResourceValues()
-            values.isExcludedFromBackup = true
-            try? u.setResourceValues(values)
-            say("download complete.")
-        } else {
-            say("model already present at \(dir.path)")
         }
-        return dir
+        defer { poll.cancel() }
+
+        do {
+            try await store.download()
+        } catch {
+            say("download FAILED: \(error)")
+            throw error
+        }
+        say("download complete + integrity-verified.")
+        return store.modelDirectory
     }
 
     // MARK: - Helpers
