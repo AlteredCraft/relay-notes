@@ -173,15 +173,14 @@ class DownloadableModelStore {
     /// The on-disk directory holding the model bundle. Stable for the process.
     let modelDirectory: URL
 
-    /// Once `status == .ready`, the location consumers load from. (Reuses the
-    /// Whisper-named `WhisperModelLocation` — it's really just a `.directory(URL)`
-    /// wrapper; a rename to a model-neutral name can come with T2.5.)
-    var location: WhisperModelLocation { .directory(modelDirectory) }
+    /// Once `status == .ready`, the location consumers load from — the engine-
+    /// neutral `ModelLocation` (a `.directory(URL)` wrapper).
+    var location: ModelLocation { .directory(modelDirectory) }
 
     /// The location to load from right now, or `nil` when the bundle isn't usable
     /// (missing / mid-download / failed). Kept here (not on the consumer) so the
     /// `status == .ready` read stays on the main actor.
-    var activeLocation: WhisperModelLocation? {
+    var activeLocation: ModelLocation? {
         status == .ready ? location : nil
     }
 

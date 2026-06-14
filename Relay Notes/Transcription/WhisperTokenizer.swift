@@ -74,7 +74,7 @@ nonisolated final class WhisperTokenizer: Sendable {
 
     // MARK: - Init
 
-    init(location: WhisperModelLocation) throws {
+    init(location: ModelLocation) throws {
         guard let url = location.fileURL(name: "gpt2", ext: "tiktoken") else {
             throw Error.vocabNotFound
         }

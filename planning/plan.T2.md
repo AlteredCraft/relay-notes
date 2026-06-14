@@ -62,19 +62,19 @@ provider-spine wiring (T2.2–T2.5).
 | **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ✅ **done + fully device-validated 2026-06-13**: bundle deleted on-device (DEBUG button) → 2.5 GB re-downloaded → SHA-256-verified → smoke PASS. Background `URLSession` deferred (open-Q #6) |
 | **T2.3** | Per-engine gating (retire the single `whisperReady` Bool) | ✅ done 2026-06-13 — `ModelStores` registry; sim suite green (Parakeet "deleting either model" lands with T2.5) |
 | **T2.4** | Factory: single live MLX engine (evict on switch) | ✅ done 2026-06-13 — `liveMLX` single-slot in `TranscriberFactory`; eviction fires once Parakeet's enum case exists (T2.5) |
-| **T2.5** | Wire engine end-to-end (enum/options/factory/UI/provenance/tests) | ✅ **code-complete 2026-06-13 (device end-to-end pending)** — full provider-spine wiring; sim suite (20 suites) green |
+| **T2.5** | Wire engine end-to-end (enum/options/factory/UI/provenance/tests) | ✅ **done + device-validated 2026-06-14** — Parakeet selectable, records + re-transcribes on the iPhone 15 Pro Max; sim suite green. (`WhisperModelLocation` renamed → `ModelLocation`, the optional T2.5 follow-up.) |
 
-**Where to pick up (new session):** T2.0–T2.5 are **code-complete** — Parakeet is wired end-to-end
-behind the provider spine (engine enum, options, `ParakeetMLXTranscriber` actor +
-`ParakeetStreamingSession`, factory eviction, `ModelStores` gating, Settings sections, re-transcribe
-provenance) and the full simulator suite (20 suites) is green. The throwaway DEBUG "Delete Parakeet
-model" button is gone — replaced by the real `ParakeetModelSection`. **The only thing left is the
-on-device end-to-end validation** (requires the iPhone 15 Pro Max + Xcode GUI — can't run on the
-simulator): select **On-device (Parakeet)** in Settings → record → confirm a transcript; re-transcribe
-an existing note with Parakeet from `NoteDetailView`; confirm the `Note`'s provenance label reads
-`Parakeet (tdt-0.6b-v2)`. That also unblocks the accuracy-ladder A/B (open-Q #5) — run the same audio
-through Apple / Whisper / Parakeet via the re-transcribe menu and compare. Once that passes on device,
-T2 is fully done and the branch is mergeable.
+**Status: T2 is DONE (device-validated 2026-06-14).** All stages T2.0–T2.5 are complete and validated
+on the iPhone 15 Pro Max — Parakeet is wired end-to-end behind the provider spine (engine enum,
+options, `ParakeetMLXTranscriber` actor + `ParakeetStreamingSession`, factory eviction, `ModelStores`
+gating, Settings sections, re-transcribe provenance), the throwaway DEBUG delete button is gone
+(replaced by the real `ParakeetModelSection`), and the full simulator suite (20 suites) is green.
+On-device end-to-end confirmed: selecting **On-device (Parakeet)** records → transcript, re-transcribe
+works, provenance reads `Parakeet (tdt-0.6b-v2)`. The optional T2.5 follow-up — renaming
+`WhisperModelLocation` → `ModelLocation` (engine-neutral) — is also done. **The branch is mergeable.**
+Remaining open items are nice-to-haves, not blockers: the accuracy-ladder A/B (open-Q #5: compare
+Apple / Whisper / Parakeet on the same audio via the re-transcribe menu) and the deferred background
+`URLSession` (open-Q #6).
 
 **Shipped so far** (committed on `t2-parakeet`):
 - `Relay Notes/Transcription/Parakeet/ParakeetConfig.swift` — `Codable` config types.

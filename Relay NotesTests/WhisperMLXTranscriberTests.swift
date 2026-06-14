@@ -181,7 +181,7 @@ struct WhisperMLXTranscriberTests {
 /// Test-only probe that runs *inside* the actor, so the non-Sendable cached
 /// state (`WhisperModel`, `MLXArray`) never crosses the isolation boundary.
 extension WhisperMLXTranscriber {
-    func cacheReusesInstances(at location: WhisperModelLocation) throws -> Bool {
+    func cacheReusesInstances(at location: ModelLocation) throws -> Bool {
         let first = try assets(at: location)
         let second = try assets(at: location)
         return first.model === second.model && first.tokenizer === second.tokenizer

@@ -26,7 +26,7 @@ actor ParakeetMLXTranscriber: Transcriber {
     /// cached. Single-entry by design — one ~1.2 GB bf16 model is the most we keep
     /// resident (and the factory evicts the *other* MLX engine, T2.4).
     struct LoadedAssets {
-        let location: WhisperModelLocation
+        let location: ModelLocation
         let model: ParakeetTDTModel
         let preprocessor: ParakeetPreprocessConfig
         /// Cached mel filterbank — building it is a host loop not worth repeating
@@ -48,14 +48,14 @@ actor ParakeetMLXTranscriber: Transcriber {
     /// Resolved fresh on every call — never latched — so a model downloaded (or
     /// deleted) mid-session takes effect on the next transcription. `nil` when no
     /// usable download exists (Parakeet has no bundled fallback).
-    func resolveLocation() async -> WhisperModelLocation? {
+    func resolveLocation() async -> ModelLocation? {
         await store?.activeLocation
     }
 
     /// Returns the cached assets for `location`, loading (and replacing any
     /// previously cached location's assets) on miss. Throws `.modelUnavailable` if
     /// the directory is missing the config or weights.
-    func assets(at location: WhisperModelLocation) throws -> LoadedAssets {
+    func assets(at location: ModelLocation) throws -> LoadedAssets {
         if let cache, cache.location == location { return cache }
         // Release the old model before loading the new one so two weight sets are
         // never resident at once.

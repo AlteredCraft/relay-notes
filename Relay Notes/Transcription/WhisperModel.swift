@@ -30,7 +30,7 @@ nonisolated struct ModelDimensions: Sendable, Codable {
     let n_text_head: Int
     let n_text_layer: Int
 
-    static func load(from location: WhisperModelLocation) throws -> ModelDimensions {
+    static func load(from location: ModelLocation) throws -> ModelDimensions {
         guard let url = location.fileURL(name: "config", ext: "json") else {
             throw WhisperModelError.configNotFound
         }
@@ -353,7 +353,7 @@ nonisolated final class WhisperModel: Module {
     /// `scripts/fetch-whisper-model.sh` once). The `weights.safetensors` file
     /// is gitignored. In prod (`.directory`) T1.2b's download manager places
     /// the file in Application Support.
-    static func load(from location: WhisperModelLocation) throws -> WhisperModel {
+    static func load(from location: ModelLocation) throws -> WhisperModel {
         let dims = try ModelDimensions.load(from: location)
         let model = WhisperModel(dims: dims)
         guard let weightsURL = location.fileURL(name: "weights", ext: "safetensors") else {
