@@ -154,6 +154,12 @@ struct SettingsView: View {
                     await ParakeetSmoke.run()
                 }
             }
+            // Forces the next Parakeet smoke to re-download + SHA-256-verify the
+            // 2.5 GB bundle (T2.2 fresh-download path). Until T2.5 ships the real
+            // Parakeet model section, this is the only delete affordance.
+            Button("Delete Parakeet model (force re-download)", role: .destructive) {
+                try? ParakeetModelStore().delete()
+            }
         } header: {
             Text("Debug")
         } footer: {
