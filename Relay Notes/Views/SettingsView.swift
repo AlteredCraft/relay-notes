@@ -22,9 +22,14 @@ struct SettingsView: View {
             Form {
                 engineSection
 
-                // Always shown — provisions Whisper *before* it can be selected
-                // (the engine row above is disabled until the model is ready).
+                // Always shown — provisions each on-device model *before* it can be
+                // selected (the engine rows above are disabled until ready). Both
+                // reconcile after a delete so a deleted model can't back the
+                // current engine selection.
                 WhisperModelSection(store: stores.whisper) {
+                    tunings.reconcileEngineAvailability(readyEngines: stores.readyEngines)
+                }
+                ParakeetModelSection(store: stores.parakeet) {
                     tunings.reconcileEngineAvailability(readyEngines: stores.readyEngines)
                 }
 
@@ -35,6 +40,8 @@ struct SettingsView: View {
                     AppleSpeechSettingsSection(tunings: tunings)
                 case .whisperMLX:
                     WhisperSettingsSection()
+                case .parakeetMLX:
+                    ParakeetSettingsSection()
                 }
 
                 // Shared — capture + storage apply regardless of engine.
@@ -97,10 +104,35 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
             .disabled(!whisperReady)
+
+            let parakeetReady = stores.isReady(.parakeetMLX)
+            Button {
+                tunings.engine = .parakeetMLX
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("On-device (Parakeet)")
+                            .foregroundStyle(parakeetReady ? .primary : .secondary)
+                        if !parakeetReady {
+                            Text("Download the model below to enable")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    if tunings.engine == .parakeetMLX {
+                        Image(systemName: "checkmark")
+                            .foregroundStyle(.tint)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!parakeetReady)
         } header: {
             Text("Transcription engine")
         } footer: {
-            Text("Apple Speech runs on-device with no model choice. On-device (Whisper) transcribes locally via MLX — it becomes selectable once you download its model below.")
+            Text("Apple Speech runs on-device with no model choice. The On-device engines (Whisper, Parakeet) transcribe locally via MLX — each becomes selectable once you download its model below.")
         }
     }
 
@@ -153,12 +185,6 @@ struct SettingsView: View {
                 Task.detached(priority: .userInitiated) {
                     await ParakeetSmoke.run()
                 }
-            }
-            // Forces the next Parakeet smoke to re-download + SHA-256-verify the
-            // 2.5 GB bundle (T2.2 fresh-download path). Until T2.5 ships the real
-            // Parakeet model section, this is the only delete affordance.
-            Button("Delete Parakeet model (force re-download)", role: .destructive) {
-                try? ParakeetModelStore().delete()
             }
         } header: {
             Text("Debug")

@@ -83,6 +83,7 @@ final class ReTranscriber {
         switch engine {
         case .apple: return .apple(AppleSpeechOptions())
         case .whisperMLX: return .whisperMLX
+        case .parakeetMLX: return .parakeetMLX
         }
     }
 
@@ -95,6 +96,7 @@ final class ReTranscriber {
         switch engine {
         case .apple: return TranscriptionEngine.apple.displayName
         case .whisperMLX: return WhisperMLXTranscriber.modelDescription
+        case .parakeetMLX: return ParakeetMLXTranscriber.modelDescription
         }
     }
 

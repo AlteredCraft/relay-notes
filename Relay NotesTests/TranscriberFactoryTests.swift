@@ -19,6 +19,12 @@ struct TranscriberFactoryTests {
         #expect(transcriber is WhisperMLXTranscriber)
     }
 
+    @Test func parakeetMLXEngineReturnsParakeetMLXTranscriber() {
+        let factory = TranscriberFactory()
+        let transcriber = factory.transcriber(for: .parakeetMLX)
+        #expect(transcriber is ParakeetMLXTranscriber)
+    }
+
     @Test func sameEngineReturnsSameInstance() {
         let factory = TranscriberFactory()
         let first = factory.transcriber(for: .apple) as? AppleSpeechTranscriber
@@ -55,5 +61,19 @@ struct TranscriberFactoryTests {
         let whisper = factory.transcriber(for: .whisperMLX)
         #expect(apple is AppleSpeechTranscriber)
         #expect(whisper is WhisperMLXTranscriber)
+    }
+
+    /// The single-live-MLX eviction (T2.4): switching to the *other* MLX engine
+    /// drops the prior one's cached instance, so coming back rebuilds it (a fresh
+    /// object) rather than reusing the evicted one — proving Whisper and Parakeet
+    /// are never co-resident.
+    @Test func switchingMLXEnginesEvictsPrevious() {
+        let factory = TranscriberFactory()
+        let whisper1 = factory.transcriber(for: .whisperMLX) as? WhisperMLXTranscriber
+        _ = factory.transcriber(for: .parakeetMLX)  // evicts whisper1
+        let whisper2 = factory.transcriber(for: .whisperMLX) as? WhisperMLXTranscriber  // rebuilt
+        #expect(whisper1 != nil)
+        #expect(whisper2 != nil)
+        #expect(whisper1 !== whisper2)
     }
 }

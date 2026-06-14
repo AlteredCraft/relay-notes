@@ -20,14 +20,33 @@ import Observation
 @Observable
 final class ModelStores {
     let whisper: WhisperModelStore
+    let parakeet: ParakeetModelStore
 
     init() {
         self.whisper = WhisperModelStore()
+        self.parakeet = ParakeetModelStore()
     }
 
-    /// Explicit stores — for tests (e.g. a store bound to a temp directory).
+    // Explicit-store overloads for tests (e.g. a store bound to a temp directory).
+    // Each unspecified store is the real Application-Support-backed one. These are
+    // separate inits rather than defaulted parameters because a default value like
+    // `= WhisperModelStore()` is evaluated in a nonisolated context and can't call
+    // the `@MainActor` store init; constructing in-body (this `@MainActor` init) is
+    // fine.
+
     init(whisper: WhisperModelStore) {
         self.whisper = whisper
+        self.parakeet = ParakeetModelStore()
+    }
+
+    init(parakeet: ParakeetModelStore) {
+        self.whisper = WhisperModelStore()
+        self.parakeet = parakeet
+    }
+
+    init(whisper: WhisperModelStore, parakeet: ParakeetModelStore) {
+        self.whisper = whisper
+        self.parakeet = parakeet
     }
 
     /// The download store backing `engine`, or `nil` for engines with no
@@ -37,6 +56,7 @@ final class ModelStores {
         switch engine {
         case .apple: return nil
         case .whisperMLX: return whisper
+        case .parakeetMLX: return parakeet
         }
     }
 

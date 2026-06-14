@@ -38,6 +38,10 @@ final class TranscriberFactory {
             return liveMLXTranscriber(for: engine) {
                 WhisperMLXTranscriber(store: stores?.whisper)
             }
+        case .parakeetMLX:
+            return liveMLXTranscriber(for: engine) {
+                ParakeetMLXTranscriber(store: stores?.parakeet)
+            }
         }
     }
 

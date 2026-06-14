@@ -143,6 +143,29 @@ class DownloadableModelStore {
         case alreadyDownloading
     }
 
+    /// Maps an internal `FailureReason` to **generic, actionable** user copy,
+    /// shared by every model-download Settings section (Whisper, Parakeet).
+    /// Deliberately drops the diagnostic detail the reason carries (HTTP status
+    /// codes, missing asset names) — that stays in logs, never in the UI. Model-
+    /// agnostic wording so it reads correctly for any bundle. `nonisolated` so the
+    /// view sections and the pure unit tests can call it without an actor hop.
+    nonisolated static func userFacingMessage(for reason: FailureReason) -> String {
+        switch reason {
+        case .network:
+            return "Couldn't download the model. Check your connection and try again."
+        case .server:
+            return "The model isn't available right now. Please try again later."
+        case .integrityCheckFailed:
+            return "The download didn't complete cleanly. Please try again."
+        case .diskWriteFailed:
+            return "Couldn't save the model. Free up some space and try again."
+        case .bundledAssetMissing:
+            return "Something went wrong preparing the model. Please try again later."
+        case .cancelled:
+            return "Download canceled."
+        }
+    }
+
     let spec: ModelDownloadSpec
 
     private(set) var status: Status = .missing

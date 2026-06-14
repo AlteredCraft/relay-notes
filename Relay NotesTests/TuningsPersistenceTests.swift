@@ -45,6 +45,21 @@ struct TuningsPersistenceTests {
         } else {
             Issue.record("Expected .whisperMLX options when engine is .whisperMLX")
         }
+
+        tunings.engine = .parakeetMLX
+        if case .parakeetMLX = tunings.transcriptionOptions {
+        } else {
+            Issue.record("Expected .parakeetMLX options when engine is .parakeetMLX")
+        }
+    }
+
+    @Test func parakeetEngineRoundTripsThroughUserDefaults() {
+        let defaults = makeDefaults()
+        let writer = Tunings(defaults: defaults)
+        writer.engine = .parakeetMLX
+
+        let reader = Tunings(defaults: defaults)
+        #expect(reader.engine == .parakeetMLX)
     }
 
     @Test func resetToDefaultsRestoresApple() {
@@ -165,6 +180,7 @@ struct TuningsPersistenceTests {
 
         #expect(tunings.apple == AppleSpeechSettings())
         #expect(tunings.whisper == WhisperSettings())
+        #expect(tunings.parakeet == ParakeetSettings())
         #expect(tunings.engine == .apple)
     }
 }

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0563BEC9499A74F7DC1082F6 /* ParakeetStreamingSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E217E509BA59BD542D3A231 /* ParakeetStreamingSessionTests.swift */; };
 		0AA641161B4B07CA3819EDF5 /* RecorderInterruptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B492830A62977826130AD2F /* RecorderInterruptionTests.swift */; };
 		0EE636621C9FC8E34DC2BCFE /* ParakeetConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 129067A590AEB2F6276A33BC /* ParakeetConfigTests.swift */; };
 		1E8AB0F00AD411F4CE431D8F /* TuningsPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9226CAD6B46AB3A7639A3AD /* TuningsPersistenceTests.swift */; };
@@ -59,6 +60,7 @@
 		5E92287F5D8E58761D6B4913 /* WhisperModelSectionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperModelSectionTests.swift; path = "Relay NotesTests/WhisperModelSectionTests.swift"; sourceTree = "<group>"; };
 		6AB135C7EC8F8041E9632C5B /* NoteTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NoteTests.swift; path = "Relay NotesTests/NoteTests.swift"; sourceTree = "<group>"; };
 		75A08A2616E8FB1A6AA892A1 /* WhisperModelStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperModelStoreTests.swift; path = "Relay NotesTests/WhisperModelStoreTests.swift"; sourceTree = "<group>"; };
+		7E217E509BA59BD542D3A231 /* ParakeetStreamingSessionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ParakeetStreamingSessionTests.swift; path = "Relay NotesTests/ParakeetStreamingSessionTests.swift"; sourceTree = "<group>"; };
 		941ECE5486B3F396081D7DDC /* WhisperTokenizerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperTokenizerTests.swift; path = "Relay NotesTests/WhisperTokenizerTests.swift"; sourceTree = "<group>"; };
 		9C4726B4B1C7A61B5EE2DC35 /* ParakeetTokenizerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ParakeetTokenizerTests.swift; path = "Relay NotesTests/ParakeetTokenizerTests.swift"; sourceTree = "<group>"; };
 		B4307D11F9D6B95E232E9FBF /* Relay NotesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Relay NotesTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -165,6 +167,7 @@
 				C62BCB3CCCC0F2AE166CA30B /* ParakeetChunkingTests.swift */,
 				115822FF05D582F9D6203B1C /* DownloadableModelStoreTests.swift */,
 				43455944560607C219EBB257 /* ModelStoresTests.swift */,
+				7E217E509BA59BD542D3A231 /* ParakeetStreamingSessionTests.swift */,
 			);
 			name = "Relay NotesTests";
 			sourceTree = SOURCE_ROOT;
@@ -300,6 +303,7 @@
 				378AE83774DB6E93C028DE46 /* ParakeetChunkingTests.swift in Sources */,
 				7BCA85A1AFA2BADD977707BC /* DownloadableModelStoreTests.swift in Sources */,
 				B48E8531807797F3F698D47E /* ModelStoresTests.swift in Sources */,
+				0563BEC9499A74F7DC1082F6 /* ParakeetStreamingSessionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

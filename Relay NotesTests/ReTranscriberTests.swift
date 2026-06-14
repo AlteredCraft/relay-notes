@@ -76,6 +76,13 @@ struct ReTranscriberTests {
         }
     }
 
+    @Test func optionsForParakeetIsParakeetMLX() {
+        guard case .parakeetMLX = ReTranscriber.options(for: .parakeetMLX) else {
+            Issue.record("Expected .parakeetMLX options")
+            return
+        }
+    }
+
     // MARK: - Provenance labels (must match the live streaming sessions)
 
     @Test func provenanceLabelForAppleMatchesSession() {
@@ -88,6 +95,12 @@ struct ReTranscriberTests {
         // WhisperStreamingSession.modelDescription returns WhisperMLXTranscriber.modelDescription.
         #expect(ReTranscriber.provenanceLabel(for: .whisperMLX) == WhisperMLXTranscriber.modelDescription)
         #expect(ReTranscriber.provenanceLabel(for: .whisperMLX) == "Whisper (small.en)")
+    }
+
+    @Test func provenanceLabelForParakeetMatchesSession() {
+        // ParakeetStreamingSession.modelDescription returns ParakeetMLXTranscriber.modelDescription.
+        #expect(ReTranscriber.provenanceLabel(for: .parakeetMLX) == ParakeetMLXTranscriber.modelDescription)
+        #expect(ReTranscriber.provenanceLabel(for: .parakeetMLX) == "Parakeet (tdt-0.6b-v2)")
     }
 
     // MARK: - Error → user message mapping (generic + actionable; no internals)

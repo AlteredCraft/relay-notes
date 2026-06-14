@@ -5,6 +5,7 @@ import Speech
 enum TranscriptionOptions: Sendable {
     case apple(AppleSpeechOptions)
     case whisperMLX
+    case parakeetMLX
 }
 
 struct AppleSpeechOptions: Sendable {
@@ -53,5 +54,10 @@ enum TranscriptionError: Error {
     case audioOpenFailed(any Error)
     case noSpeechDetected
     case engineNotImplemented(String)
+    /// A model-backed engine was asked to transcribe but its weights aren't on
+    /// disk (no store injected, or the model was deleted). The app gates engine
+    /// selection on model presence, so this is defensive — it maps to the
+    /// recorder's generic "something went wrong" message, never a raw detail.
+    case modelUnavailable
     case underlying(any Error)
 }

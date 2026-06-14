@@ -23,6 +23,12 @@ struct AppleSpeechSettings: Sendable, Equatable {
 /// place to land.
 struct WhisperSettings: Sendable, Equatable {}
 
+/// Reserved home for on-device Parakeet decode dials. Empty in v1 (greedy TDT
+/// decode with fixed `max_symbols` / durations; the chunk window is a fixed
+/// 120 s / 15 s). Mirrors `WhisperSettings` so the per-engine surface stays
+/// symmetric and future dials have a place to land.
+struct ParakeetSettings: Sendable, Equatable {}
+
 @MainActor
 @Observable
 final class Tunings {
@@ -73,6 +79,9 @@ final class Tunings {
     /// No persisted fields yet — reserved (see `WhisperSettings`).
     var whisper: WhisperSettings
 
+    /// No persisted fields yet — reserved (see `ParakeetSettings`).
+    var parakeet: ParakeetSettings
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
 
@@ -106,8 +115,9 @@ final class Tunings {
             contextualStringsText: defaults.string(forKey: Key.contextualStringsText) ?? ""
         )
 
-        // Whisper bundle — nothing persisted yet.
+        // Whisper / Parakeet bundles — nothing persisted yet.
         self.whisper = WhisperSettings()
+        self.parakeet = ParakeetSettings()
     }
 
     func resetToDefaults() {
@@ -116,6 +126,7 @@ final class Tunings {
         engine = .apple
         apple = AppleSpeechSettings()
         whisper = WhisperSettings()
+        parakeet = ParakeetSettings()
     }
 
     /// Enforces the invariant that a model-backed engine can only be the selected
@@ -152,6 +163,8 @@ final class Tunings {
             return .apple(AppleSpeechOptions(preset: apple.preset, contextualStrings: strings))
         case .whisperMLX:
             return .whisperMLX
+        case .parakeetMLX:
+            return .parakeetMLX
         }
     }
 

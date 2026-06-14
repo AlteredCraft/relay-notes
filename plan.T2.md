@@ -62,14 +62,19 @@ provider-spine wiring (T2.2–T2.5).
 | **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ✅ **done + fully device-validated 2026-06-13**: bundle deleted on-device (DEBUG button) → 2.5 GB re-downloaded → SHA-256-verified → smoke PASS. Background `URLSession` deferred (open-Q #6) |
 | **T2.3** | Per-engine gating (retire the single `whisperReady` Bool) | ✅ done 2026-06-13 — `ModelStores` registry; sim suite green (Parakeet "deleting either model" lands with T2.5) |
 | **T2.4** | Factory: single live MLX engine (evict on switch) | ✅ done 2026-06-13 — `liveMLX` single-slot in `TranscriberFactory`; eviction fires once Parakeet's enum case exists (T2.5) |
-| **T2.5** | Wire engine end-to-end (enum/options/factory/UI/provenance/tests) | ⬜ **← START HERE** |
+| **T2.5** | Wire engine end-to-end (enum/options/factory/UI/provenance/tests) | ✅ **code-complete 2026-06-13 (device end-to-end pending)** — full provider-spine wiring; sim suite (20 suites) green |
 
-**Where to pick up (new session):** T2.0–T2.2 are done and device-validated — the Parakeet model
-port works end-to-end on the iPhone 15 Pro Max and downloads through the generalized store with
-integrity checking. **Next is T2.3** (per-engine gating), then T2.4 → T2.5; all three are
-provider-spine wiring (no more MLX numerics). See §6 (integration points) + §8 (stage-by-stage).
-A throwaway DEBUG "Delete Parakeet model" button exists in `SettingsView` to force a fresh
-download; **T2.5 should replace it** with the real `ParakeetModelSection`.
+**Where to pick up (new session):** T2.0–T2.5 are **code-complete** — Parakeet is wired end-to-end
+behind the provider spine (engine enum, options, `ParakeetMLXTranscriber` actor +
+`ParakeetStreamingSession`, factory eviction, `ModelStores` gating, Settings sections, re-transcribe
+provenance) and the full simulator suite (20 suites) is green. The throwaway DEBUG "Delete Parakeet
+model" button is gone — replaced by the real `ParakeetModelSection`. **The only thing left is the
+on-device end-to-end validation** (requires the iPhone 15 Pro Max + Xcode GUI — can't run on the
+simulator): select **On-device (Parakeet)** in Settings → record → confirm a transcript; re-transcribe
+an existing note with Parakeet from `NoteDetailView`; confirm the `Note`'s provenance label reads
+`Parakeet (tdt-0.6b-v2)`. That also unblocks the accuracy-ladder A/B (open-Q #5) — run the same audio
+through Apple / Whisper / Parakeet via the re-transcribe menu and compare. Once that passes on device,
+T2 is fully done and the branch is mergeable.
 
 **Shipped so far** (committed on `t2-parakeet`):
 - `Relay Notes/Transcription/Parakeet/ParakeetConfig.swift` — `Codable` config types.

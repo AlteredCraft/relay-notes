@@ -36,6 +36,21 @@ struct ModelStoresTests {
         return (ModelStores(whisper: WhisperModelStore(modelDirectory: dir)), dir)
     }
 
+    /// Parakeet store backed by an empty dir → `.missing`.
+    private func missingParakeetStores() -> (stores: ModelStores, dir: URL) {
+        let dir = makeTempDirectory()
+        return (ModelStores(parakeet: ParakeetModelStore(modelDirectory: dir)), dir)
+    }
+
+    /// Parakeet store backed by a dir with placeholder files for *both* remote
+    /// files (the spec requires `model.safetensors` **and** `config.json`) → `.ready`.
+    private func readyParakeetStores() -> (stores: ModelStores, dir: URL) {
+        let dir = makeTempDirectory()
+        try? Data("not-real-weights".utf8).write(to: dir.appendingPathComponent("model.safetensors"))
+        try? Data("{}".utf8).write(to: dir.appendingPathComponent("config.json"))
+        return (ModelStores(parakeet: ParakeetModelStore(modelDirectory: dir)), dir)
+    }
+
     // MARK: - isReady
 
     @Test func appleIsAlwaysReady() {
@@ -56,6 +71,27 @@ struct ModelStoresTests {
         #expect(stores.isReady(.whisperMLX))
     }
 
+    @Test func parakeetNotReadyWhenModelMissing() {
+        let (stores, dir) = missingParakeetStores()
+        defer { cleanup(dir) }
+        #expect(!stores.isReady(.parakeetMLX))
+    }
+
+    @Test func parakeetReadyWhenBothFilesPresent() {
+        let (stores, dir) = readyParakeetStores()
+        defer { cleanup(dir) }
+        #expect(stores.isReady(.parakeetMLX))
+    }
+
+    @Test func parakeetNotReadyWithOnlyWeights() {
+        // The spec requires both remote files; weights alone isn't ready.
+        let dir = makeTempDirectory()
+        defer { cleanup(dir) }
+        try? Data("not-real-weights".utf8).write(to: dir.appendingPathComponent("model.safetensors"))
+        let stores = ModelStores(parakeet: ParakeetModelStore(modelDirectory: dir))
+        #expect(!stores.isReady(.parakeetMLX))
+    }
+
     // MARK: - store(for:)
 
     @Test func appleHasNoStore() {
@@ -70,17 +106,45 @@ struct ModelStoresTests {
         #expect(stores.store(for: .whisperMLX) === stores.whisper)
     }
 
-    // MARK: - readyEngines
-
-    @Test func readyEnginesExcludesWhisperWhenMissing() {
-        let (stores, dir) = missingWhisperStores()
+    @Test func parakeetResolvesToParakeetStore() {
+        let (stores, dir) = missingParakeetStores()
         defer { cleanup(dir) }
+        #expect(stores.store(for: .parakeetMLX) === stores.parakeet)
+    }
+
+    // MARK: - readyEngines
+    //
+    // Both stores pinned to temp dirs so readiness is deterministic (independent
+    // of any model the simulator's Application Support happens to hold).
+
+    @Test func readyEnginesIsAppleOnlyWhenBothModelsMissing() {
+        let wDir = makeTempDirectory(); let pDir = makeTempDirectory()
+        defer { cleanup(wDir); cleanup(pDir) }
+        let stores = ModelStores(
+            whisper: WhisperModelStore(modelDirectory: wDir),
+            parakeet: ParakeetModelStore(modelDirectory: pDir))
         #expect(stores.readyEngines == [.apple])
     }
 
-    @Test func readyEnginesIncludesWhisperWhenPresent() {
-        let (stores, dir) = readyWhisperStores()
-        defer { cleanup(dir) }
+    @Test func readyEnginesIncludesWhisperWhenOnlyWhisperPresent() {
+        let wDir = makeTempDirectory(); let pDir = makeTempDirectory()
+        defer { cleanup(wDir); cleanup(pDir) }
+        try? Data("not-real-weights".utf8).write(to: wDir.appendingPathComponent("weights.safetensors"))
+        let stores = ModelStores(
+            whisper: WhisperModelStore(modelDirectory: wDir),
+            parakeet: ParakeetModelStore(modelDirectory: pDir))
         #expect(stores.readyEngines == [.apple, .whisperMLX])
+    }
+
+    @Test func readyEnginesIncludesBothWhenBothPresent() {
+        let wDir = makeTempDirectory(); let pDir = makeTempDirectory()
+        defer { cleanup(wDir); cleanup(pDir) }
+        try? Data("not-real-weights".utf8).write(to: wDir.appendingPathComponent("weights.safetensors"))
+        try? Data("not-real-weights".utf8).write(to: pDir.appendingPathComponent("model.safetensors"))
+        try? Data("{}".utf8).write(to: pDir.appendingPathComponent("config.json"))
+        let stores = ModelStores(
+            whisper: WhisperModelStore(modelDirectory: wDir),
+            parakeet: ParakeetModelStore(modelDirectory: pDir))
+        #expect(stores.readyEngines == [.apple, .whisperMLX, .parakeetMLX])
     }
 }
