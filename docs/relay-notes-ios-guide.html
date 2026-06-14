@@ -219,6 +219,31 @@
       color:#fff; cursor: pointer; box-shadow: 0 6px 18px -4px rgba(0,0,0,.6); }
     main { padding-top: 60px; }
   }
+
+  /* ---------- Architecture diagrams (inline SVG, dependency-free) ---------- */
+  figure.diagram { margin: 26px 0; border: 1px solid var(--line); border-radius: 14px;
+    background: linear-gradient(180deg, #121925, var(--bg-card)); padding: 18px 16px 10px; }
+  figure.diagram svg { width: 100%; height: auto; display: block; }
+  figure.diagram figcaption { font-size: 12.8px; color: var(--text-dim); text-align: center;
+    margin-top: 10px; line-height: 1.5; max-width: 66ch; margin-left: auto; margin-right: auto; }
+  .diagram text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .dg-box     { fill: #1a2230; stroke: #2b3950; stroke-width: 1.5; }
+  .dg-accent  { fill: rgba(27,181,164,.13); stroke: var(--teal-bright); stroke-width: 1.7; }
+  .dg-indigo  { fill: rgba(79,70,229,.18); stroke: var(--indigo-bright); stroke-width: 1.5; }
+  .dg-amber   { fill: rgba(245,185,113,.13); stroke: #f5b971; stroke-width: 1.5; }
+  .dg-pink    { fill: rgba(255,123,156,.13); stroke: var(--kw); stroke-width: 1.5; }
+  .dg-region  { fill: rgba(255,255,255,.022); stroke: #33425a; stroke-width: 1.4; stroke-dasharray: 5 4; }
+  .dg-band    { fill: #0e131c; stroke: #1c2533; }
+  .dg-t       { fill: #f2f5f9; font-weight: 700; }
+  .dg-s       { fill: #93a0b1; }
+  .dg-mono    { font-family: "SF Mono", ui-monospace, Menlo, monospace; fill: #9fe6d8; }
+  .dg-edge       { stroke: #6b7890; stroke-width: 1.7; fill: none; }
+  .dg-edge-async { stroke: var(--teal-bright); stroke-width: 1.7; fill: none; stroke-dasharray: 6 4; }
+  .dg-elbl   { fill: #cdd6e3; }
+  .dg-elbl-a { fill: #84e3d5; }
+  .dg-dom    { fill: var(--indigo-bright); font-weight: 700; letter-spacing: .4px; }
+  .dg-dom-t  { fill: var(--teal-bright); font-weight: 700; letter-spacing: .4px; }
+  .dg-dom-a  { fill: #f5b971; font-weight: 700; letter-spacing: .4px; }
 </style>
 </head>
 <body>
@@ -418,7 +443,68 @@ struct AppleSpeechOptions: Sendable {
     case finished(transcript: String)
     case failed(message: String)
 }</code></pre>
-    <p>Illegal states are unrepresentable — there is no "recording AND failed" because the value is one case at a time. Transitions are a pure <code class="inl">switch</code>, which makes them unit-testable without spinning up audio hardware (see <code class="inl">RecorderViewModel.nextState(for:from:)</code>).</p>
+    <p>Illegal states are unrepresentable — there is no "recording AND failed" because the value is one case at a time. Transitions are a pure <code class="inl">switch</code>, which makes them unit-testable without spinning up audio hardware (see <code class="inl">RecorderViewModel.nextState(for:from:)</code>). Drawn out, the whole lifecycle is small:</p>
+
+    <figure class="diagram">
+    <svg viewBox="0 0 880 300" role="img" aria-label="Recorder state machine">
+      <defs>
+        <marker id="ahD" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6b7890"/></marker>
+        <marker id="ahDr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2fd4c0"/></marker>
+      </defs>
+
+      <!-- nodes -->
+      <rect class="dg-box" x="24" y="124" width="104" height="48" rx="11"/>
+      <text class="dg-t" x="76" y="153" text-anchor="middle" font-size="14">idle</text>
+
+      <rect class="dg-accent" x="238" y="40" width="150" height="50" rx="11"/>
+      <text class="dg-t" x="313" y="62" text-anchor="middle" font-size="13">recording</text>
+      <text class="dg-s" x="313" y="78" text-anchor="middle" font-size="9.5">partial: String</text>
+
+      <rect class="dg-amber" x="238" y="150" width="150" height="50" rx="11"/>
+      <text class="dg-t" x="313" y="172" text-anchor="middle" font-size="13">paused</text>
+      <text class="dg-s" x="313" y="188" text-anchor="middle" font-size="9.5">partial: String</text>
+
+      <rect class="dg-box" x="470" y="100" width="140" height="50" rx="11"/>
+      <text class="dg-t" x="540" y="122" text-anchor="middle" font-size="13">finalizing</text>
+      <text class="dg-s" x="540" y="138" text-anchor="middle" font-size="9.5">transcribing…</text>
+
+      <rect class="dg-accent" x="700" y="40" width="156" height="50" rx="11"/>
+      <text class="dg-t" x="778" y="62" text-anchor="middle" font-size="13">finished</text>
+      <text class="dg-s" x="778" y="78" text-anchor="middle" font-size="9.5">transcript</text>
+
+      <rect class="dg-pink" x="700" y="150" width="156" height="50" rx="11"/>
+      <text class="dg-t" x="778" y="172" text-anchor="middle" font-size="13">failed</text>
+      <text class="dg-s" x="778" y="188" text-anchor="middle" font-size="9.5">message</text>
+
+      <!-- edges -->
+      <g font-size="10.5">
+        <path class="dg-edge" marker-end="url(#ahD)" d="M128,142 C180,138 196,74 236,66"/>
+        <text class="dg-elbl" x="150" y="92" text-anchor="middle">tap ● start</text>
+
+        <path class="dg-edge" marker-end="url(#ahD)" d="M300,90 L300,150"/>
+        <text class="dg-elbl" x="226" y="124" text-anchor="end">.began</text>
+
+        <path class="dg-edge" marker-end="url(#ahD)" d="M328,150 L328,91"/>
+        <text class="dg-elbl" x="340" y="124">.resumed</text>
+
+        <path class="dg-edge" marker-end="url(#ahD)" d="M388,72 C428,82 432,108 468,116"/>
+        <text class="dg-elbl" x="406" y="84">tap ◼ stop</text>
+
+        <path class="dg-edge" marker-end="url(#ahD)" d="M388,176 C430,168 436,140 468,132"/>
+        <text class="dg-elbl" x="406" y="188">.stopped</text>
+
+        <path class="dg-edge" marker-end="url(#ahD)" d="M610,118 C650,106 660,76 698,68"/>
+        <text class="dg-elbl" x="632" y="86">ok</text>
+
+        <path class="dg-edge" marker-end="url(#ahD)" d="M610,132 C652,144 660,166 698,174"/>
+        <text class="dg-elbl" x="620" y="150">error / no speech</text>
+
+        <path class="dg-edge-async" marker-end="url(#ahDr)" d="M778,200 C778,262 76,262 76,172"/>
+        <text class="dg-elbl-a" x="430" y="258" text-anchor="middle">reset() — finished / failed → idle</text>
+      </g>
+    </svg>
+    <figcaption><strong>recording ↔ paused</strong> is driven entirely by <code class="inl">AVAudioSession</code> interruptions (a call/Siri/alarm); a non-resumable <code class="inl">.stopped</code> auto-finalizes so audio is never lost. A failure during start or transcription lands in <strong>failed</strong> with a user-friendly message.</figcaption>
+    </figure>
 
     <h3>4. Optionals and <code class="inl">guard</code></h3>
     <p>There is no <code class="inl">null</code>. "Might be absent" is encoded in the type as <code class="inl">T?</code>, and you must unwrap before use. The idiomatic unwrap is <code class="inl">guard let</code> — an early-return that also <em>narrows the type</em> for the rest of the scope:</p>
@@ -548,6 +634,104 @@ private final class TapState: @unchecked Sendable { … }</code></pre>
         }
     }
 }</code></pre>
+
+    <figure class="diagram">
+    <svg viewBox="0 0 880 410" role="img" aria-label="Concurrency isolation domains and the boundaries between them">
+      <defs>
+        <marker id="ahB" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6b7890"/></marker>
+        <marker id="ahBa" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2fd4c0"/></marker>
+      </defs>
+
+      <!-- ===== regions ===== -->
+      <rect class="dg-region" x="16" y="46" width="372" height="210" rx="14"/>
+      <text class="dg-dom" x="28" y="38" font-size="12.5">@MainActor — UI &amp; orchestration</text>
+
+      <rect class="dg-region" x="410" y="46" width="210" height="150" rx="14"/>
+      <text class="dg-dom-a" x="420" y="38" font-size="12.5">audio thread · realtime</text>
+
+      <rect class="dg-region" x="410" y="214" width="210" height="150" rx="14"/>
+      <text class="dg-dom-t" x="420" y="206" font-size="12.5">actor — serialized</text>
+
+      <rect class="dg-region" x="642" y="46" width="222" height="318" rx="14"/>
+      <text class="dg-s" x="652" y="38" font-size="11.5" font-weight="700">nonisolated · own isolation</text>
+
+      <!-- ===== MainActor inner ===== -->
+      <rect class="dg-indigo" x="36" y="78" width="196" height="74" rx="10"/>
+      <text class="dg-t" x="134" y="103" text-anchor="middle" font-size="12">RecorderViewModel</text>
+      <text class="dg-s" x="134" y="119" text-anchor="middle" font-size="9.5">@Observable · state machine</text>
+      <text class="dg-s" x="134" y="133" text-anchor="middle" font-size="9.5">feed / updates / interruption tasks</text>
+
+      <rect class="dg-box" x="252" y="78" width="120" height="40" rx="9"/>
+      <text class="dg-t" x="312" y="102" text-anchor="middle" font-size="11.5">Tunings</text>
+
+      <rect class="dg-box" x="252" y="128" width="120" height="44" rx="9"/>
+      <text class="dg-t" x="312" y="148" text-anchor="middle" font-size="10.5">TranscriberFactory</text>
+      <text class="dg-s" x="312" y="162" text-anchor="middle" font-size="9.5">caches providers</text>
+
+      <rect class="dg-box" x="36" y="180" width="196" height="62" rx="10"/>
+      <text class="dg-t" x="134" y="204" text-anchor="middle" font-size="12">LiveAudioEngine</text>
+      <text class="dg-s" x="134" y="219" text-anchor="middle" font-size="9.5">setup / teardown on main actor</text>
+      <text class="dg-s" x="134" y="233" text-anchor="middle" font-size="9.5">installs the input tap ▸</text>
+
+      <rect class="dg-box" x="252" y="180" width="120" height="62" rx="9"/>
+      <text class="dg-t" x="312" y="208" text-anchor="middle" font-size="11.5">SwiftUI Views</text>
+      <text class="dg-s" x="312" y="223" text-anchor="middle" font-size="9.5">read state →</text>
+      <text class="dg-s" x="312" y="236" text-anchor="middle" font-size="9.5">re-render</text>
+
+      <!-- ===== audio-thread inner ===== -->
+      <rect class="dg-amber" x="428" y="82" width="174" height="40" rx="9"/>
+      <text class="dg-t" x="515" y="106" text-anchor="middle" font-size="11.5">input tap closure</text>
+
+      <rect class="dg-box" x="428" y="132" width="174" height="48" rx="9"/>
+      <text class="dg-t" x="515" y="154" text-anchor="middle" font-size="11.5">TapState</text>
+      <text class="dg-s" x="515" y="169" text-anchor="middle" font-size="9.5">@unchecked Sendable</text>
+
+      <!-- ===== actor inner ===== -->
+      <rect class="dg-accent" x="428" y="244" width="174" height="66" rx="10"/>
+      <text class="dg-t" x="515" y="268" text-anchor="middle" font-size="11">WhisperMLXTranscriber</text>
+      <text class="dg-s" x="515" y="283" text-anchor="middle" font-size="9.5">one decode at a time</text>
+      <text class="dg-s" x="515" y="297" text-anchor="middle" font-size="9.5">cached weights ≈ 480 MB</text>
+
+      <!-- ===== nonisolated inner ===== -->
+      <rect class="dg-box" x="658" y="82" width="190" height="46" rx="9"/>
+      <text class="dg-t" x="753" y="103" text-anchor="middle" font-size="11">AppleSpeechTranscriber</text>
+      <text class="dg-s" x="753" y="118" text-anchor="middle" font-size="9.5">final class</text>
+
+      <rect class="dg-box" x="658" y="140" width="190" height="46" rx="9"/>
+      <text class="dg-t" x="753" y="161" text-anchor="middle" font-size="11">AppleSpeechSession</text>
+      <text class="dg-s" x="753" y="176" text-anchor="middle" font-size="9.5">emits live partials</text>
+
+      <rect class="dg-box" x="658" y="198" width="190" height="56" rx="9"/>
+      <text class="dg-t" x="753" y="219" text-anchor="middle" font-size="11">WhisperStreamingSession</text>
+      <text class="dg-s" x="753" y="234" text-anchor="middle" font-size="9.5">accumulates PCM ·</text>
+      <text class="dg-mono" x="753" y="247" text-anchor="middle" font-size="9.5">Mutex&lt;[Float]&gt;</text>
+
+      <!-- ===== crossings ===== -->
+      <!-- installs tap (MainActor -> audio) -->
+      <path class="dg-edge" marker-end="url(#ahB)" d="M232,212 C330,212 350,118 426,104"/>
+      <text class="dg-elbl" x="318" y="150" text-anchor="middle" font-size="10.5">installs tap</text>
+      <!-- buffers stream (audio -> MainActor) -->
+      <path class="dg-edge-async" marker-end="url(#ahBa)" d="M410,150 C320,66 286,66 234,108"/>
+      <text class="dg-elbl-a" x="312" y="60" text-anchor="middle" font-size="10.5">buffers ⟿</text>
+      <!-- updates stream (nonisolated -> MainActor) -->
+      <path class="dg-edge-async" marker-end="url(#ahBa)" d="M658,92 C470,24 320,40 234,98"/>
+      <text class="dg-elbl-a" x="452" y="30" text-anchor="middle" font-size="10.5">updates ⟿</text>
+      <!-- feed/finish (MainActor -> nonisolated) -->
+      <path class="dg-edge" marker-end="url(#ahB)" d="M232,150 C430,196 520,168 656,160"/>
+      <text class="dg-elbl" x="452" y="186" text-anchor="middle" font-size="10.5">feed() · finish()</text>
+      <!-- await actor (nonisolated -> actor) -->
+      <path class="dg-edge" marker-end="url(#ahB)" d="M656,232 C628,250 612,270 604,274"/>
+      <text class="dg-elbl" x="515" y="334" text-anchor="middle" font-size="10.5">await transcribePCM()</text>
+
+      <!-- legend -->
+      <line class="dg-edge" x1="200" y1="388" x2="232" y2="388"/>
+      <text class="dg-elbl" x="240" y="392" font-size="10.5">solid = await (cross-domain hop)</text>
+      <line class="dg-edge-async" x1="470" y1="388" x2="502" y2="388"/>
+      <text class="dg-elbl-a" x="510" y="392" font-size="10.5">dashed = AsyncStream (value pipe)</text>
+    </svg>
+    <figcaption>Four isolation domains, and every arrow between them is a boundary the compiler checks. Values only cross as an <code class="inl">await</code> or through an <code class="inl">AsyncStream</code> — which is why the realtime audio thread, the GPU actor, and the UI never race.</figcaption>
+    </figure>
+
     <div class="note tip">
       <div class="h">▹ How to read the concurrency, fast</div>
       <p>Mentally tag each type with its domain: <code class="inl">@MainActor</code> (UI + orchestration), <code class="inl">actor</code> (Whisper model), the <em>audio thread</em> (the tap closure + <code class="inl">TapState</code>). Every arrow between domains is an <code class="inl">await</code> or an <code class="inl">AsyncStream</code>. The compiler already verified the crossings are race-free — so you can trust the boundaries and just follow the data.</p>
@@ -557,7 +741,79 @@ private final class TapState: @unchecked Sendable { … }</code></pre>
   <!-- ===================== SPINE ===================== -->
   <section id="spine">
     <h2><span class="num">06</span> The architecture spine: provider abstraction</h2>
-    <p>Here's the load-bearing pattern, stated plainly: <strong>capabilities hide behind protocols; concrete providers are resolved at runtime.</strong> Today it's transcription; the same shape is reserved for a future LLM-cleanup stage. If you internalize this section, the file layout makes sense.</p>
+    <p>Here's the load-bearing pattern, stated plainly: <strong>capabilities hide behind protocols; concrete providers are resolved at runtime.</strong> Today it's transcription; the same shape is reserved for a future LLM-cleanup stage. If you internalize this section, the file layout makes sense. Here's the whole system on one slide — five layers, each depending only on the one below:</p>
+
+    <figure class="diagram">
+    <svg viewBox="0 0 880 408" role="img" aria-label="Layered architecture map of Relay Notes">
+      <defs>
+        <marker id="ahA" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#6b7890"/></marker>
+      </defs>
+
+      <text class="dg-s" x="58" y="15" font-size="9.5" text-anchor="middle">uses ↓</text>
+      <path class="dg-edge" marker-end="url(#ahA)" d="M92,82 L92,95"/>
+      <path class="dg-edge" marker-end="url(#ahA)" d="M92,158 L92,171"/>
+      <path class="dg-edge" marker-end="url(#ahA)" d="M92,234 L92,247"/>
+      <path class="dg-edge" marker-end="url(#ahA)" d="M92,310 L92,323"/>
+
+      <!-- band 1: UI -->
+      <text class="dg-t" x="14" y="47" font-size="12.5">UI</text>
+      <text class="dg-s" x="14" y="62" font-size="10">SwiftUI</text>
+      <g font-size="11" text-anchor="middle">
+        <rect class="dg-box" x="168" y="24" width="127" height="54" rx="9"/><text class="dg-t" x="231" y="55">ContentView</text>
+        <rect class="dg-box" x="307" y="24" width="127" height="54" rx="9"/><text class="dg-t" x="370" y="55">NotesListView</text>
+        <rect class="dg-box" x="446" y="24" width="127" height="54" rx="9"/><text class="dg-t" x="509" y="55">RecorderView</text>
+        <rect class="dg-box" x="585" y="24" width="127" height="54" rx="9"/><text class="dg-t" x="648" y="55">NoteDetailView</text>
+        <rect class="dg-box" x="724" y="24" width="127" height="54" rx="9"/><text class="dg-t" x="787" y="55">SettingsView</text>
+      </g>
+
+      <!-- band 2: orchestration -->
+      <text class="dg-t" x="14" y="123" font-size="12.5">Orchestration</text>
+      <text class="dg-s" x="14" y="138" font-size="10">@MainActor</text>
+      <g text-anchor="middle">
+        <rect class="dg-indigo" x="168" y="100" width="266" height="54" rx="9"/>
+        <text class="dg-t" x="301" y="122" font-size="12">RecorderViewModel</text>
+        <text class="dg-s" x="301" y="138" font-size="9.5">the state machine + async task orchestration</text>
+        <rect class="dg-box" x="446" y="100" width="127" height="54" rx="9"/>
+        <text class="dg-t" x="509" y="122" font-size="11.5">Tunings</text>
+        <text class="dg-s" x="509" y="138" font-size="9.5">@Observable</text>
+        <rect class="dg-box" x="585" y="100" width="266" height="54" rx="9"/>
+        <text class="dg-t" x="718" y="122" font-size="11.5">ReTranscriber</text>
+        <text class="dg-s" x="718" y="138" font-size="9.5">re-run a note through the other engine</text>
+      </g>
+
+      <!-- band 3: the spine -->
+      <text class="dg-dom-t" x="14" y="199" font-size="12.5">The spine</text>
+      <text class="dg-s" x="14" y="214" font-size="10">protocols + DI</text>
+      <g text-anchor="middle" font-size="10.5">
+        <rect class="dg-accent" x="168" y="176" width="127" height="54" rx="9"/><text class="dg-t" x="231" y="199">Transcriber</text><text class="dg-s" x="231" y="214" font-size="9.5">protocol</text>
+        <rect class="dg-accent" x="307" y="176" width="127" height="54" rx="9"/><text class="dg-t" x="370" y="199">Transcription-</text><text class="dg-t" x="370" y="213">Session</text>
+        <rect class="dg-accent" x="446" y="176" width="127" height="54" rx="9"/><text class="dg-t" x="509" y="199">Transcription-</text><text class="dg-t" x="509" y="213">Options · enum</text>
+        <rect class="dg-accent" x="585" y="176" width="127" height="54" rx="9"/><text class="dg-t" x="648" y="199">Transcription-</text><text class="dg-t" x="648" y="213">Engine · enum</text>
+        <rect class="dg-accent" x="724" y="176" width="127" height="54" rx="9"/><text class="dg-t" x="787" y="199">Transcriber-</text><text class="dg-t" x="787" y="213">Factory</text>
+      </g>
+
+      <!-- band 4: providers -->
+      <text class="dg-t" x="14" y="275" font-size="12.5">Providers</text>
+      <text class="dg-s" x="14" y="290" font-size="10">&amp; capability</text>
+      <g text-anchor="middle">
+        <rect class="dg-box" x="168" y="252" width="127" height="54" rx="9"/><text class="dg-t" x="231" y="273" font-size="10.5">AppleSpeech-</text><text class="dg-t" x="231" y="286" font-size="10.5">Transcriber</text><text class="dg-s" x="231" y="300" font-size="9">class</text>
+        <rect class="dg-accent" x="307" y="252" width="127" height="54" rx="9"/><text class="dg-t" x="370" y="273" font-size="10.5">WhisperMLX-</text><text class="dg-t" x="370" y="286" font-size="10.5">Transcriber</text><text class="dg-s" x="370" y="300" font-size="9">actor</text>
+        <rect class="dg-box" x="446" y="252" width="127" height="54" rx="9"/><text class="dg-t" x="509" y="273" font-size="10.5">LiveAudio-</text><text class="dg-t" x="509" y="286" font-size="10.5">Engine</text><text class="dg-s" x="509" y="300" font-size="9">@MainActor</text>
+        <rect class="dg-box" x="585" y="252" width="127" height="54" rx="9"/><text class="dg-t" x="648" y="273" font-size="10.5">WhisperModel-</text><text class="dg-t" x="648" y="286" font-size="10.5">Store</text><text class="dg-s" x="648" y="300" font-size="9">downloads</text>
+        <rect class="dg-box" x="724" y="252" width="127" height="54" rx="9"/><text class="dg-t" x="787" y="280" font-size="11">Note</text><text class="dg-s" x="787" y="296" font-size="9">@Model</text>
+      </g>
+
+      <!-- band 5: frameworks -->
+      <text class="dg-t" x="14" y="352" font-size="12.5">Frameworks</text>
+      <g text-anchor="middle" font-size="11">
+        <rect class="dg-band" x="183" y="330" width="150" height="40" rx="9"/><text class="dg-s" x="258" y="354">Speech</text>
+        <rect class="dg-band" x="351" y="330" width="150" height="40" rx="9"/><text class="dg-s" x="426" y="354">AVFoundation</text>
+        <rect class="dg-band" x="519" y="330" width="150" height="40" rx="9"/><text class="dg-s" x="594" y="354">MLX · mlx-swift</text>
+        <rect class="dg-band" x="687" y="330" width="150" height="40" rx="9"/><text class="dg-s" x="762" y="354">SwiftData</text>
+      </g>
+    </svg>
+    <figcaption>The teal layer is the seam: everything above it talks only to <em>protocols</em>; everything at the provider layer is a swappable implementation (<code class="inl">WhisperMLXTranscriber</code>, also teal, is the one that plugs in). Add an engine = add a box on the provider row.</figcaption>
+    </figure>
 
     <h3>The contract has two methods, both on purpose</h3>
     <pre><code class="swift">nonisolated protocol Transcriber: Sendable {
@@ -620,6 +876,89 @@ final class TranscriberFactory {
   <section id="dataflow">
     <h2><span class="num">07</span> Tap → speak → saved: the whole path</h2>
     <p class="lead">This is the payoff. Here's one recording, traced end-to-end through the real types. Every concept above shows up doing a job.</p>
+
+    <figure class="diagram">
+    <svg viewBox="0 0 880 498" role="img" aria-label="Runtime sequence: tap to speak to saved note">
+      <defs>
+        <marker id="ahC" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6b7890"/></marker>
+        <marker id="ahCa" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2fd4c0"/></marker>
+      </defs>
+
+      <!-- lifelines -->
+      <g stroke="#2b3950" stroke-width="1.3" stroke-dasharray="3 5">
+        <line x1="76" y1="64" x2="76" y2="476"/>
+        <line x1="258" y1="64" x2="258" y2="476"/>
+        <line x1="446" y1="64" x2="446" y2="476"/>
+        <line x1="632" y1="64" x2="632" y2="476"/>
+        <line x1="793" y1="64" x2="793" y2="476"/>
+      </g>
+
+      <!-- lane headers -->
+      <rect class="dg-box" x="24" y="18" width="104" height="46" rx="9"/>
+      <text class="dg-t" x="76" y="46" text-anchor="middle" font-size="12">You</text>
+      <rect class="dg-indigo" x="170" y="18" width="176" height="46" rx="9"/>
+      <text class="dg-t" x="258" y="39" text-anchor="middle" font-size="11.5">RecorderView / VM</text>
+      <text class="dg-s" x="258" y="54" text-anchor="middle" font-size="9.5">@MainActor</text>
+      <rect class="dg-box" x="366" y="18" width="160" height="46" rx="9"/>
+      <text class="dg-t" x="446" y="39" text-anchor="middle" font-size="11.5">LiveAudioEngine</text>
+      <text class="dg-s" x="446" y="54" text-anchor="middle" font-size="9.5">+ audio thread</text>
+      <rect class="dg-box" x="550" y="18" width="164" height="46" rx="9"/>
+      <text class="dg-t" x="632" y="44" text-anchor="middle" font-size="11">TranscriptionSession</text>
+      <rect class="dg-box" x="730" y="18" width="126" height="46" rx="9"/>
+      <text class="dg-t" x="793" y="39" text-anchor="middle" font-size="11.5">SwiftData</text>
+      <text class="dg-s" x="793" y="54" text-anchor="middle" font-size="9.5">@Query</text>
+
+      <!-- loop frame -->
+      <rect x="196" y="198" width="520" height="128" rx="8" fill="rgba(27,181,164,.05)" stroke="#33425a" stroke-width="1.2" stroke-dasharray="5 4"/>
+      <path d="M196,198 h120 v20 h-110 l-10,-10 z" fill="#16202c" stroke="#33425a" stroke-width="1.2"/>
+      <text class="dg-dom-t" x="206" y="212" font-size="10">loop · while recording</text>
+
+      <!-- messages -->
+      <g font-size="10.5">
+        <path class="dg-edge" marker-end="url(#ahC)" d="M76,92 L256,92"/>
+        <text class="dg-elbl" x="166" y="86" text-anchor="middle">tap ● record</text>
+
+        <path class="dg-edge" marker-end="url(#ahC)" d="M258,120 L630,120"/>
+        <text class="dg-elbl" x="444" y="114" text-anchor="middle">makeStreamingSession(options)</text>
+
+        <path class="dg-edge" marker-end="url(#ahC)" d="M258,148 L444,148"/>
+        <text class="dg-elbl" x="352" y="142" text-anchor="middle">engine.start(analyzerFormat)</text>
+
+        <path class="dg-edge" marker-end="url(#ahC)" d="M446,176 L260,176"/>
+        <text class="dg-elbl" x="352" y="170" text-anchor="middle">↩ LiveRecording { buffers, interruptions }</text>
+
+        <!-- loop body -->
+        <path class="dg-edge-async" marker-end="url(#ahCa)" d="M446,226 L260,226"/>
+        <text class="dg-elbl-a" x="354" y="220" text-anchor="middle">buffers ⟿ (each chunk)</text>
+
+        <path class="dg-edge" marker-end="url(#ahC)" d="M258,254 L630,254"/>
+        <text class="dg-elbl" x="444" y="248" text-anchor="middle">session.feed(buffer)</text>
+
+        <path class="dg-edge-async" marker-end="url(#ahCa)" d="M632,282 L260,282"/>
+        <text class="dg-elbl-a" x="446" y="276" text-anchor="middle">updates ⟿ partial transcript</text>
+
+        <rect class="dg-indigo" x="178" y="300" width="160" height="18" rx="5"/>
+        <text class="dg-mono" x="258" y="313" text-anchor="middle" font-size="9">state = .recording(partial)</text>
+
+        <!-- stop + finalize -->
+        <path class="dg-edge" marker-end="url(#ahC)" d="M76,352 L256,352"/>
+        <text class="dg-elbl" x="166" y="346" text-anchor="middle">tap ◼ stop</text>
+
+        <path class="dg-edge" marker-end="url(#ahC)" d="M258,380 L444,380"/>
+        <text class="dg-elbl" x="352" y="374" text-anchor="middle">engine.stop()</text>
+
+        <path class="dg-edge" marker-end="url(#ahC)" d="M258,408 L630,408"/>
+        <text class="dg-elbl" x="444" y="402" text-anchor="middle">session.finish() → transcript</text>
+
+        <path class="dg-edge" marker-end="url(#ahC)" d="M258,436 L791,436"/>
+        <text class="dg-elbl" x="520" y="430" text-anchor="middle">insert + save Note</text>
+
+        <path class="dg-edge-async" marker-end="url(#ahCa)" d="M793,462 L260,462"/>
+        <text class="dg-elbl-a" x="520" y="456" text-anchor="middle">@Query re-renders the list automatically</text>
+      </g>
+    </svg>
+    <figcaption>Time flows downward. Solid = a direct call; dashed teal = an <code class="inl">AsyncStream</code> delivering values over time. The loop is the live phase; the bottom four messages are stop → decode → persist → the list updating itself. The six numbered steps below narrate this same picture.</figcaption>
+    </figure>
 
     <div class="steps">
       <div class="step">
