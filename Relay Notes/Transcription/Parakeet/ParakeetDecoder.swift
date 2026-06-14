@@ -153,6 +153,10 @@ nonisolated final class ParakeetTDTModel: Module {
     let maxSymbols: Int
     /// Blank token index == vocabulary size (the `+1` row of the joint vocab head).
     let blankIndex: Int
+    /// Seconds of audio per encoder frame: `subsamplingFactor · hopLength / sampleRate`
+    /// (8 · 160 / 16000 = 0.08 s). Converts a decode `step` into a token timestamp
+    /// for the long-audio chunk merge (T2.1e). Ports senstella's `time_ratio`.
+    let timeRatio: Double
 
     nonisolated init(config: ParakeetTDTConfig) {
         self._encoder.wrappedValue = ParakeetConformerEncoder(config: config.encoder)
@@ -162,6 +166,10 @@ nonisolated final class ParakeetTDTModel: Module {
         self.durations = config.decoding.durations
         self.maxSymbols = config.decoding.maxSymbols
         self.blankIndex = config.joint.vocabulary.count
+        self.timeRatio =
+            Double(config.encoder.subsamplingFactor)
+            / Double(config.preprocessor.sampleRate)
+            * Double(config.preprocessor.hopLength)
         super.init()
     }
 
@@ -172,16 +180,86 @@ nonisolated final class ParakeetTDTModel: Module {
         return parakeetDecodeTokens(tokens, vocabulary: vocabulary)
     }
 
-    /// TDT greedy decode (single batch). Ports `decode_greedy`: per encoder frame,
+    /// Long-audio path (T2.1e): step the raw PCM in `chunkDuration` windows with
+    /// `overlapDuration` overlap, featurize + encode + decode each window
+    /// independently, offset each window's token timestamps by the window start,
+    /// and merge the overlap so shared tokens aren't dropped or duplicated. Ports
+    /// `ParakeetTDT.transcribe(chunk_duration=…)` from `parakeet.py`.
+    ///
+    /// Parakeet's encoder is O(T²) in attention, and a multi-minute note would also
+    /// grow the activation footprint past the no-entitlement ceiling — chunking
+    /// bounds both. The whole-clip fast path (audio ≤ one window) matches the
+    /// reference exactly, so short notes are byte-identical to ``transcribe(_:)``.
+    ///
+    /// - Parameters:
+    ///   - audio: 1-D PCM, 16 kHz mono (e.g. `MLXArray(WhisperAudio.loadPCM(...))`).
+    ///   - preprocessor: the model's mel config (sample rate / hop drive the windows).
+    ///   - filters: cached mel filterbank from ``ParakeetAudio/melFilterbank(config:)``.
+    ///   - chunkDuration: window length in seconds (reference default 120 s).
+    ///   - overlapDuration: window overlap in seconds (reference default 15 s).
+    func transcribeChunked(
+        _ audio: MLXArray,
+        preprocessor: ParakeetPreprocessConfig,
+        filters: MLXArray,
+        chunkDuration: Double = 120,
+        overlapDuration: Double = 15
+    ) -> String {
+        let sampleRate = preprocessor.sampleRate
+        let audioLength = audio.shape[0]
+        let chunkSamples = Int(chunkDuration * Double(sampleRate))
+        let overlapSamples = Int(overlapDuration * Double(sampleRate))
+        let stride = max(1, chunkSamples - overlapSamples)
+
+        // Fits one window → no chunking (identical to the reference's early return).
+        if audioLength <= chunkSamples {
+            let mel = ParakeetAudio.logMel(audio, config: preprocessor, filters: filters)
+            return parakeetDecodeTokens(decodeGreedy(encoder(mel)), vocabulary: vocabulary)
+        }
+
+        var allTokens: [ParakeetToken] = []
+        var start = 0
+        while start < audioLength {
+            let end = min(start + chunkSamples, audioLength)
+            if end - start < preprocessor.hopLength { break }  // guard a zero-length mel
+
+            let mel = ParakeetAudio.logMel(audio[start ..< end], config: preprocessor, filters: filters)
+            let features = encoder(mel)
+            MLX.eval(features)  // bound the lazy graph before the host-side decode loop
+
+            let offset = Double(start) / Double(sampleRate)
+            var chunkTokens = decodeGreedyAligned(features)
+            for i in chunkTokens.indices { chunkTokens[i].start += offset }
+
+            allTokens =
+                allTokens.isEmpty
+                ? chunkTokens
+                : ParakeetChunkMerge.merge(allTokens, chunkTokens, overlapDuration: overlapDuration)
+
+            start += stride
+        }
+        return allTokens.map(\.text).joined()
+    }
+
+    /// TDT greedy decode → emitted token ids. Thin wrapper over
+    /// ``decodeGreedyAligned(_:)`` (the timestamps it carries are unused here);
+    /// kept as the single-pass / whole-clip entry point.
+    func decodeGreedy(_ features: MLXArray) -> [Int] {
+        decodeGreedyAligned(features).map(\.id)
+    }
+
+    /// TDT greedy decode (single batch), **with per-token time alignment** for the
+    /// long-audio chunk merge (T2.1e). Ports `decode_greedy`: per encoder frame,
     /// run the prediction net (advances only on a non-blank emission) + joint, read
     /// the **vocab head** (`argmax`, index == `blankIndex` ⇒ blank, don't emit) and
     /// the **duration head** (`argmax` over `durations` ⇒ frames to advance), with
-    /// the `max_symbols` stuck-guard for duration-0 loops. Returns emitted token ids.
-    func decodeGreedy(_ features: MLXArray) -> [Int] {
+    /// the `max_symbols` stuck-guard for duration-0 loops. Each emitted token records
+    /// `start = step · timeRatio` and `duration = durations[decision] · timeRatio`
+    /// (the pre-advance `step`, matching the reference).
+    func decodeGreedyAligned(_ features: MLXArray) -> [ParakeetToken] {
         let length = features.shape[1]
         let vocabPlusBlank = blankIndex + 1  // vocab head width (incl. blank)
 
-        var tokens: [Int] = []
+        var tokens: [ParakeetToken] = []
         var lastToken: Int? = nil
         var hidden: (MLXArray, MLXArray)? = nil
         var step = 0
@@ -199,7 +277,12 @@ nonisolated final class ParakeetTDTModel: Module {
             let decision = Int(logits[vocabPlusBlank...].argMax(axis: -1).item(Int32.self))
 
             if predToken != blankIndex {
-                tokens.append(predToken)
+                tokens.append(
+                    ParakeetToken(
+                        id: predToken,
+                        text: parakeetDecodeTokens([predToken], vocabulary: vocabulary),
+                        start: Double(step) * timeRatio,
+                        duration: Double(durations[decision]) * timeRatio))
                 lastToken = predToken
                 hidden = newState
                 if let hidden { MLX.eval(hidden.0, hidden.1) }  // bound the lazy graph across steps

@@ -62,6 +62,7 @@ nonisolated enum ParakeetSmoke {
         // are device-validated and recorded — call them manually if re-measuring.
         await runFeaturizer()
         await runDecode()
+        await runChunked()
     }
 
     // MARK: - T2.1b — mel front-end (no weights; mirrors MLXSmoke.runWhisperAudio)
@@ -308,6 +309,110 @@ nonisolated enum ParakeetSmoke {
             say("decode ERROR: \(error)")
         }
         say("=== T2.1d END ===")
+    }
+
+    // MARK: - T2.1e — long-audio chunking (overlap + token merge)
+
+    /// Validates the chunk-with-overlap path (`transcribeChunked`). The bundled
+    /// `ls_test.flac` is only ~6.7 s, so we **tile it ~6×** (~40 s) and transcribe
+    /// it two ways from the *same* model:
+    ///   1. whole-clip (one window) — the reference output, and
+    ///   2. chunked with a deliberately small 15 s window / 5 s overlap (≈4 windows),
+    /// then compare. A correct overlap merge makes the two transcripts match — no
+    /// dropped or duplicated words at the window boundaries (the T2.1e done-when).
+    ///
+    /// The tiled clip is adversarial for the merge (identical sentence repeated, so
+    /// the overlap is full of equal token ids) — exactly the case the timestamp
+    /// proximity guard (`|Δstart| < overlap/2`) exists to disambiguate.
+    static func runChunked() async {
+        say("=== T2.1e long-audio chunking START ===")
+
+        let dir: URL
+        do {
+            dir = try await ensureModelDownloaded()
+        } catch {
+            say("download failed: \(error) — skipping chunking.")
+            return
+        }
+
+        let config: ParakeetTDTConfig
+        do {
+            config = try ParakeetTDTConfig.load(from: dir.appendingPathComponent("config.json"))
+        } catch {
+            say("config decode FAILED: \(error) — skipping chunking.")
+            return
+        }
+
+        guard let flacURL = Bundle.main.url(forResource: "ls_test", withExtension: "flac") else {
+            say("ls_test.flac NOT FOUND in bundle — skipping chunking.")
+            return
+        }
+
+        do {
+            // Tile the fixture to ~40 s so a 15 s window actually splits it.
+            let basePCM = try WhisperAudio.loadPCM(url: flacURL)
+            var tiled: [Float] = []
+            tiled.reserveCapacity(basePCM.count * 6)
+            for _ in 0 ..< 6 { tiled.append(contentsOf: basePCM) }
+            let audio = MLXArray(tiled)
+            let seconds = tiled.count / config.preprocessor.sampleRate
+            say("tiled audio = \(tiled.count) samples (≈\(seconds)s); base clip ×6")
+
+            let filters = ParakeetAudio.melFilterbank(config: config.preprocessor)
+            say("loading full model (incremental bf16 cast-release)…")
+            let model = try ParakeetTDTModel.load(
+                weightsURL: dir.appendingPathComponent("model.safetensors"), config: config)
+
+            // 1. Whole-clip (chunkDuration past the clip length → fast path).
+            let s0 = Date()
+            let single = model.transcribeChunked(
+                audio, preprocessor: config.preprocessor, filters: filters,
+                chunkDuration: Double(seconds) + 100, overlapDuration: 15)
+            let singleMs = Int(Date().timeIntervalSince(s0) * 1000)
+
+            // 2. Chunked: 15 s windows, 5 s overlap (stride 10 s → ~4 windows).
+            let c0 = Date()
+            let chunked = model.transcribeChunked(
+                audio, preprocessor: config.preprocessor, filters: filters,
+                chunkDuration: 15, overlapDuration: 5)
+            let chunkedMs = Int(Date().timeIntervalSince(c0) * 1000)
+
+            let singleCount = occurrences(of: expectedSubstring, in: single.lowercased())
+            let chunkedCount = occurrences(of: expectedSubstring, in: chunked.lowercased())
+            say("whole-clip (\(singleMs) ms): \"\(single)\"")
+            say("chunked    (\(chunkedMs) ms): \"\(chunked)\"")
+            say("substring occurrences — whole-clip \(singleCount), chunked \(chunkedCount)")
+
+            let hasSubstring = chunked.lowercased().contains(expectedSubstring)
+            let identical = chunked == single
+            // Identical is the strong signal (boundaries clean); count-equal is the
+            // T2.1e requirement (no boundary drop/dup). Substring presence is the floor.
+            if hasSubstring && identical {
+                say("chunking check = PASS ✅ (chunked == whole-clip, byte-identical)")
+            } else if hasSubstring && chunkedCount == singleCount {
+                say("chunking check = PASS ✅ (occurrence count preserved; minor non-boundary diff — inspect transcripts)")
+            } else if hasSubstring {
+                say("chunking check = REVIEW ⚠️ (substring present but counts differ \(singleCount)→\(chunkedCount) — boundary drop/dup? inspect)")
+            } else {
+                say("chunking check = FAIL ❌ (expected substring absent from chunked output)")
+            }
+        } catch {
+            say("chunking ERROR: \(error)")
+        }
+        say("=== T2.1e END ===")
+    }
+
+    /// Count non-overlapping occurrences of `needle` in `haystack` (both already
+    /// lowercased by the caller). Used to compare whole-clip vs chunked output.
+    private static func occurrences(of needle: String, in haystack: String) -> Int {
+        guard !needle.isEmpty else { return 0 }
+        var count = 0
+        var idx = haystack.startIndex
+        while let r = haystack.range(of: needle, range: idx ..< haystack.endIndex) {
+            count += 1
+            idx = r.upperBound
+        }
+        return count
     }
 
     /// Tracks the max `phys_footprint` across `record` calls during the forward

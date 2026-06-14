@@ -46,12 +46,16 @@ Branch: **`t2-parakeet`** (off `t1.3-measurements`; T1.3 is not yet merged to ma
 | **T2.1b** | Mel front-end (featurizer) | ✅ done, device-validated 2026-06-13 (`[1, 667, 128]`, per-feature mean ≈ 0) |
 | **T2.1c** | FastConformer encoder | ✅ done, device-validated 2026-06-13 (`[1, 84, 1024]`; fwd 130 ms; **peak 1.31 GB → no entitlement**) |
 | **T2.1d** | TDT greedy decoder + vocab decode (substring gate) | ✅ done, **device substring PASS 2026-06-13** (word-perfect transcript; 287 ms) |
-| **T2.1e** | Long-audio chunking (overlap + token merge) | ⬜ **next** |
+| **T2.1e** | Long-audio chunking (overlap + token merge) | ✅ code-complete 2026-06-13; merge unit-validated (sim); device tiled-clip smoke pending |
 
 **🎉 The model port (T2.1b–d) is complete and device-validated.** `ls_test.flac` decodes
 to *"Then the good soul openly shouldered the burden she had borne so long in secret, and
-bravely trudged on alone."* — byte-matching the Python reference. Only T2.1e (long-audio
-chunking) remains before the provider-spine wiring (T2.2–T2.5).
+bravely trudged on alone."* — byte-matching the Python reference. **T2.1e (long-audio
+chunking) is code-complete** — `transcribeChunked` (overlap windows + the proper senstella
+contiguous/LCS token merge, ported verbatim) and `decodeGreedyAligned` (per-token timestamps);
+the merge math is simulator-unit-tested (`ParakeetChunkingTests`, 6 cases), the end-to-end
+tiled-clip device smoke (`ParakeetSmoke.runChunked`) is the remaining validation. Next is the
+provider-spine wiring (T2.2–T2.5).
 | **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ⬜ |
 | **T2.3** | Per-engine gating (retire the single `whisperReady` Bool) | ⬜ |
 | **T2.4** | Factory: single live MLX engine (evict on switch) | ⬜ |
@@ -69,6 +73,10 @@ chunking) remains before the provider-spine wiring (T2.2–T2.5).
 - `Relay Notes/Transcription/Parakeet/ParakeetDecoder.swift` — **T2.1d** prediction net
   (`ParakeetPredictNetwork` + LSTM stack), `ParakeetJointNetwork`, and `ParakeetTDTModel`
   (encoder+decoder+joint + TDT greedy `decodeGreedy` + `transcribe` + full-model `load`).
+  (T2.1e: `timeRatio`, `decodeGreedyAligned` → `[ParakeetToken]`, `transcribeChunked`.)
+- `Relay Notes/Transcription/Parakeet/ParakeetChunking.swift` — **T2.1e** time-aligned
+  `ParakeetToken` + `ParakeetChunkMerge` (contiguous/LCS overlap merge, sim-safe; ports
+  senstella `alignment.py`). `Relay NotesTests/ParakeetChunkingTests.swift` — 6 sim-safe tests.
 - `Relay Notes/Transcription/Parakeet/ParakeetTokenizer.swift` — **T2.1d** `parakeetDecodeTokens`
   (id→text, `▁`→space). `Relay NotesTests/ParakeetTokenizerTests.swift` — 3 sim-safe tests.
 - `Relay Notes/Transcription/Parakeet/ParakeetSmoke.swift` — DEBUG device harness (`os.Logger`);
@@ -412,6 +420,18 @@ boundaries). For voice notes this matters less than for hour-long audio; a corre
 overlap-cutoff merge may suffice for v1 — validate on a tiled clip (like Whisper's
 `runWhisperChunked`).
 
+**Port status (T2.1e — code-complete; device tiled-clip smoke pending).** Ported the **full**
+senstella algorithm, not the simple cutoff: `ParakeetChunking.swift` has `ParakeetToken`
+(time-aligned) + `ParakeetChunkMerge.longestContiguous` (returns `nil` exactly where the Python
+raises → caller falls to LCS) + `longestCommonSubsequence` + a shared `cutoff` (thin overlap)
+and `stitch` (the identical result-construction tail of both Python functions). It's pure
+id+timestamp math (no MLX) ⇒ **simulator-unit-tested** (`ParakeetChunkingTests`: concat / cutoff
+/ contiguous-dedup / non-contiguous-LCS-fallback). The decode side emits timestamps via
+`ParakeetTDTModel.decodeGreedyAligned` (`start = step·timeRatio`, `duration =
+durations[decision]·timeRatio`); `transcribeChunked` drives the window loop (whole-clip fast
+path identical to `transcribe(_:)`). `ParakeetSmoke.runChunked` tiles `ls_test.flac` ×6 and
+asserts chunked == whole-clip (the boundary-correctness gate).
+
 ---
 
 ## 6. Codebase integration (the provider spine)
@@ -523,11 +543,15 @@ For each: **goal · do · validate · gotchas · done-when.**
   joint slicing and the blank index.
 - **Done-when:** substring PASS on device; transcript looks right.
 
-### T2.1e — Long-audio chunking
-- **Do:** chunk-with-overlap + token merge per §5.5 (own path; not Whisper's `ChunkedTranscription`).
-  Smoke: decode a tiled ~36 s clip (like `runWhisperChunked`).
-- **Validate:** tiled clip decodes with no dropped/dup words at boundaries.
-- **Done-when:** a >chunk-length clip transcribes correctly on device.
+### T2.1e — Long-audio chunking ✅ code-complete (device tiled-clip smoke pending)
+- **Done:** `ParakeetChunking.swift` (`ParakeetToken` + `ParakeetChunkMerge`, full
+  contiguous/LCS merge ported from `alignment.py`); `decodeGreedyAligned` (per-token
+  timestamps) + `transcribeChunked` (window loop, whole-clip fast path) in `ParakeetDecoder.swift`;
+  `ParakeetSmoke.runChunked` (tiled ×6 ≈40 s; whole-clip vs chunked 15 s/5 s). 6 sim-safe
+  `ParakeetChunkingTests` green; build + suite green.
+- **Validate (pending):** run the device smoke — chunked output must equal the whole-clip
+  output (no dropped/dup words at the 15 s window boundaries on the tiled clip).
+- **Done-when:** the `runChunked` smoke reports PASS on the iPhone 15 Pro Max.
 
 ### T2.2 — Generalize the download store
 - **Do:** extract the generic machinery from `WhisperModelStore` into
@@ -587,7 +611,12 @@ For each: **goal · do · validate · gotchas · done-when.**
    is still the T2.1d substring check — also the arbiter for the §5.2 hann / magnitude / mel-scale risks.
 2. ~~**`increased-memory-limit` entitlement**~~ — **RESOLVED in T2.1c: NOT needed.** Encoder
    forward peaks at 1.31 GB `phys_footprint` (device-measured), ~1.7 GB under the ~3 GB ceiling (§3.1).
-3. **Chunk merge sophistication** (§5.5) — simple overlap-cutoff vs full LCS; decide from a tiled-clip test.
+3. ~~**Chunk merge sophistication** (§5.5) — simple overlap-cutoff vs full LCS~~ — **RESOLVED in
+   T2.1e: ported the full senstella algorithm** (`merge_longest_contiguous` with the
+   `merge_longest_common_subsequence` fallback + midpoint cutoff for thin overlaps), not the
+   FluidInference cutoff stub. Unit-validated on the simulator (`ParakeetChunkingTests`); the
+   tiled-clip device smoke (`ParakeetSmoke.runChunked`, whole-clip vs chunked) is the final
+   confirmation that boundaries don't drop/dup words.
 4. **bf16 vs a pre-converted on-disk format** — we cast F32→bf16 at load each launch (~fast, lazy). If
    load time grates, consider converting once to a bf16 safetensors on disk (T2.2 could own this), so
    subsequent loads mmap bf16 directly (~1.2 GB, no cast). Not needed for v1.
