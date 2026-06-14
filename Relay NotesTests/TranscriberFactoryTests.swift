@@ -27,6 +27,28 @@ struct TranscriberFactoryTests {
         #expect(first === second)
     }
 
+    /// The single-live-MLX cache (T2.4): re-requesting the same MLX engine returns
+    /// the cached instance, so its loaded weights aren't reloaded.
+    @Test func sameMLXEngineReturnsSameInstance() {
+        let factory = TranscriberFactory()
+        let first = factory.transcriber(for: .whisperMLX) as? WhisperMLXTranscriber
+        let second = factory.transcriber(for: .whisperMLX) as? WhisperMLXTranscriber
+        #expect(first != nil)
+        #expect(first === second)
+    }
+
+    /// Toggling Apple↔an MLX engine doesn't evict the cached MLX transcriber
+    /// (Apple isn't MLX-backed) — the same Whisper instance survives a detour
+    /// through Apple, so its weights stay resident.
+    @Test func mlxInstanceSurvivesAppleDetour() {
+        let factory = TranscriberFactory()
+        let whisper1 = factory.transcriber(for: .whisperMLX) as? WhisperMLXTranscriber
+        _ = factory.transcriber(for: .apple)
+        let whisper2 = factory.transcriber(for: .whisperMLX) as? WhisperMLXTranscriber
+        #expect(whisper1 != nil)
+        #expect(whisper1 === whisper2)
+    }
+
     @Test func differentEnginesReturnDifferentInstances() {
         let factory = TranscriberFactory()
         let apple = factory.transcriber(for: .apple)

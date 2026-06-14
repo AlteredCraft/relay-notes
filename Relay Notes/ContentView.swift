@@ -55,7 +55,7 @@ struct ContentView: View {
                 tunings.reconcileEngineAvailability(readyEngines: stores.readyEngines)
                 // One factory shared by the recorder and the re-transcriber so a
                 // re-run reuses the already-loaded model rather than a second copy.
-                let factory = TranscriberFactory(whisperModelStore: stores.whisper)
+                let factory = TranscriberFactory(stores: stores)
                 viewModel = RecorderViewModel(
                     engine: LiveAudioEngine(),
                     transcriberFactory: factory,

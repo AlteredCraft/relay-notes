@@ -84,7 +84,7 @@ struct WhisperMLXTranscriberTests {
         defer { cleanup(tmp) }
         let store = try makeReadyStore(in: tmp)
 
-        let factory = TranscriberFactory(whisperModelStore: store)
+        let factory = TranscriberFactory(stores: ModelStores(whisper: store))
         let transcriber = try #require(factory.transcriber(for: .whisperMLX) as? WhisperMLXTranscriber)
         let location = await transcriber.resolveLocation()
         #expect(location == .directory(tmp))

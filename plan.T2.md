@@ -61,8 +61,8 @@ moot at the 120 s/15 s production default. **Nothing in T2.1 remains.** Next is 
 provider-spine wiring (T2.2–T2.5).
 | **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ✅ **done + fully device-validated 2026-06-13**: bundle deleted on-device (DEBUG button) → 2.5 GB re-downloaded → SHA-256-verified → smoke PASS. Background `URLSession` deferred (open-Q #6) |
 | **T2.3** | Per-engine gating (retire the single `whisperReady` Bool) | ✅ done 2026-06-13 — `ModelStores` registry; sim suite green (Parakeet "deleting either model" lands with T2.5) |
-| **T2.4** | Factory: single live MLX engine (evict on switch) | ⬜ **← START HERE** |
-| **T2.5** | Wire engine end-to-end (enum/options/factory/UI/provenance/tests) | ⬜ |
+| **T2.4** | Factory: single live MLX engine (evict on switch) | ✅ done 2026-06-13 — `liveMLX` single-slot in `TranscriberFactory`; eviction fires once Parakeet's enum case exists (T2.5) |
+| **T2.5** | Wire engine end-to-end (enum/options/factory/UI/provenance/tests) | ⬜ **← START HERE** |
 
 **Where to pick up (new session):** T2.0–T2.2 are done and device-validated — the Parakeet model
 port works end-to-end on the iPhone 15 Pro Max and downloads through the generalized store with
