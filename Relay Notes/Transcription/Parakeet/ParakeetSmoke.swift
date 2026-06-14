@@ -41,6 +41,12 @@ nonisolated enum ParakeetSmoke {
 
     private static let log = Logger(subsystem: "alteredcraft.Relay-Notes", category: "ParakeetSmoke")
 
+    /// The bundled `ls_test.flac` is a fixed LibriSpeech clip, so its decode is
+    /// deterministic — asserting this stable substring (case-insensitive) turns
+    /// the T2.1d end-to-end decode into a pass/fail gate (same fixture + phrase as
+    /// the Whisper `MLXSmoke`). This is the test that confirms the whole port.
+    private static let expectedSubstring = "openly shouldered the burden"
+
     /// `.notice` is persisted (survives a crash) and marked `.public` so the
     /// diagnostic text isn't redacted to `<private>` in Console.app.
     private static func say(_ message: String) {
@@ -48,13 +54,14 @@ nonisolated enum ParakeetSmoke {
     }
 
     static func run() async {
-        // Cheap → expensive. T2.1b (featurizer) needs no weights and logs in
-        // seconds; T2.1c (encoder) does the heavy bf16 cast-load + forward and
-        // reports the peak footprint that decides the entitlement. T2.1a
-        // (`runLoadFootprint`, the full-key-dump + bf16-floor measurement) is
-        // device-validated and recorded — call it manually if re-measuring.
+        // Cheap → end-to-end. T2.1b (featurizer) needs no weights and logs in
+        // seconds; T2.1d (`runDecode`) loads the **full** model (encoder + decoder
+        // + joint), transcribes `ls_test.flac`, asserts the substring gate, and
+        // reports the full-model peak footprint — subsuming the T2.1c encoder load.
+        // T2.1a (`runLoadFootprint`) and T2.1c (`runEncoder`, encoder-only peak)
+        // are device-validated and recorded — call them manually if re-measuring.
         await runFeaturizer()
-        await runEncoder()
+        await runDecode()
     }
 
     // MARK: - T2.1b — mel front-end (no weights; mirrors MLXSmoke.runWhisperAudio)
@@ -207,6 +214,100 @@ nonisolated enum ParakeetSmoke {
             say("encoder ERROR: \(error)")
         }
         say("=== T2.1c END ===")
+    }
+
+    // MARK: - T2.1d — TDT decode (end-to-end substring gate)
+
+    /// The correctness gate. Loads the **full** model (encoder + decoder + joint),
+    /// featurizes `ls_test.flac`, runs encoder → TDT greedy decode → vocab decode,
+    /// and asserts the transcript contains the expected substring. This is what
+    /// confirms the whole port (and arbitrates the §5.2 featurizer risks). Also
+    /// reports the full-model peak footprint (the real end-state entitlement
+    /// number, ≥ the T2.1c encoder-only figure by the tiny decoder/joint).
+    static func runDecode() async {
+        say("=== T2.1d TDT decode (end-to-end substring gate) START ===")
+
+        let dir: URL
+        do {
+            dir = try await ensureModelDownloaded()
+        } catch {
+            say("download failed: \(error) — skipping decode.")
+            return
+        }
+
+        let config: ParakeetTDTConfig
+        do {
+            config = try ParakeetTDTConfig.load(from: dir.appendingPathComponent("config.json"))
+        } catch {
+            say("config decode FAILED: \(error) — skipping decode.")
+            return
+        }
+
+        guard let flacURL = Bundle.main.url(forResource: "ls_test", withExtension: "flac") else {
+            say("ls_test.flac NOT FOUND in bundle — skipping decode.")
+            return
+        }
+
+        do {
+            let pcm = try WhisperAudio.loadPCM(url: flacURL)
+            let filters = ParakeetAudio.melFilterbank(config: config.preprocessor)
+            let mel = ParakeetAudio
+                .logMel(MLXArray(pcm), config: config.preprocessor, filters: filters)
+                .asType(.bfloat16)
+            eval(mel)  // `eval` is MLX.eval(_:) — forces the lazy graph, not code exec.
+
+            say("loading full model (encoder+decoder+joint; incremental bf16 cast-release)…")
+            let loadStart = Date()
+            let model = try ParakeetTDTModel.load(
+                weightsURL: dir.appendingPathComponent("model.safetensors"), config: config)
+            let loadMs = Int(Date().timeIntervalSince(loadStart) * 1000)
+            say("model loaded in \(loadMs) ms — resident floor \(formatBytes(residentFootprintBytes()))")
+
+            // Transcribe (encode + greedy decode) with peak sampling.
+            let sampler = PeakMemorySampler()
+            let poll = Task {
+                while !Task.isCancelled {
+                    await sampler.record(residentFootprintBytes())
+                    try? await Task.sleep(for: .milliseconds(25))
+                }
+            }
+            // Diagnostic samples to cross-check against the Python oracle if the
+            // gate fails. Reference (ls_test.flac, validated on Mac):
+            //   mel[0,0,:5] ≈ [-0.690, -0.790, -0.812, -1.083, -1.061]
+            //   enc range ≈ [-0.645, 0.535]; enc[0,0,:5] ≈ [0.028, -0.022, 0.058, 0.004, 0.021]
+            say("mel[0,0,:5]              = \(firstValues(mel[0, 0], 5))")
+            MLX.GPU.resetPeakMemory()
+            let t0 = Date()
+            let features = model.encoder(mel)
+            eval(features)
+            let encMin: Float = features.asType(.float32).min().item(Float.self)
+            let encMax: Float = features.asType(.float32).max().item(Float.self)
+            say("encoder out shape        = \(features.shape) range [\(encMin), \(encMax)]")
+            say("enc[0,0,:5]              = \(firstValues(features[0, 0], 5))")
+            let transcript = parakeetDecodeTokens(model.decodeGreedy(features), vocabulary: model.vocabulary)
+            let ms = Int(Date().timeIntervalSince(t0) * 1000)
+            poll.cancel()
+            let peak = await sampler.peak
+            let snap = MLX.Memory.snapshot()
+
+            say("transcript: \"\(transcript)\"")
+            let pass = transcript.lowercased().contains(expectedSubstring)
+            say("substring check (\"\(expectedSubstring)\") = \(pass ? "PASS ✅" : "FAIL ❌")")
+            say("transcribe time          = \(ms) ms (encode + greedy decode)")
+            say("── memory (full model) ──")
+            say("  MLX active / cache     = \(formatBytes(snap.activeMemory)) / \(formatBytes(snap.cacheMemory))")
+            say("  MLX peak active        = \(formatBytes(snap.peakMemory))")
+            say("  PEAK process footprint = \(formatBytes(peak))")
+            let ceiling: UInt64 = 3 * 1024 * 1024 * 1024
+            let verdict =
+                peak == 0
+                ? "unavailable"
+                : (peak < ceiling ? "FITS without increased-memory-limit" : "NEEDS increased-memory-limit")
+            say("ENTITLEMENT (full model): peak vs ~3 GB ceiling → \(verdict)")
+        } catch {
+            say("decode ERROR: \(error)")
+        }
+        say("=== T2.1d END ===")
     }
 
     /// Tracks the max `phys_footprint` across `record` calls during the forward
@@ -388,6 +489,15 @@ nonisolated enum ParakeetSmoke {
 
     // Mirrors the footprint helpers in MLXSmoke; kept local to avoid touching the
     // working Whisper smoke. Unify into a shared DEBUG util if a third consumer appears.
+
+    /// First `n` scalar values of a 1-D `MLXArray`, formatted for log comparison
+    /// against the Python oracle. Casts to f32 so bf16 arrays read out cleanly.
+    static func firstValues(_ a: MLXArray, _ n: Int) -> String {
+        let f = a.asType(.float32)
+        let count = min(n, a.shape.last ?? 0)
+        let vals = (0 ..< count).map { String(format: "%.4f", f[$0].item(Float.self)) }
+        return "[" + vals.joined(separator: ", ") + "]"
+    }
 
     static func residentFootprintBytes() -> UInt64? {
         var info = task_vm_info_data_t()

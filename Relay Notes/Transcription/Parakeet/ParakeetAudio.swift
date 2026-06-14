@@ -20,9 +20,10 @@ import MLX
 ///      not skipped as the FluidInference Optional read would.
 ///   2. **periodic Hann** (`np.hanning(N+1)[:-1]`, denominator `N`), via
 ///      `WhisperAudio.hanning` — not the symmetric `/(N-1)` form.
-///   3. **L2 magnitude** (`|rfft|`) — matches NeMo's `torch.stft` magnitude;
-///      the Python's `|re|+|im|` is an L1 approximation, the FluidInference
-///      `abs(complex)` already L2.
+///   3. **L1 magnitude** (`|re| + |im|`) — RESOLVED in T2.1d. The plan started
+///      with L2 (`|rfft|`, NeMo's `torch.stft`), but this mlx-community checkpoint
+///      expects senstella's L1; L2 yields a wholly different normalized mel and a
+///      garbage transcript. Numerically matched against the Python oracle.
 ///
 /// Numerical correctness is only *confirmed* by the T2.1d end-to-end substring
 /// gate (`ls_test.flac` → "openly shouldered the burden"); these three are the
@@ -80,8 +81,14 @@ nonisolated enum ParakeetAudio {
         let spectrum = WhisperAudio.stft(
             x, window: window, nperseg: config.nFFT, noverlap: config.hopLength)
 
-        // 4. L2 magnitude, then power spectrum (`mag_power` = 2.0).
-        let magnitude = MLX.abs(spectrum)
+        // 4. L1 magnitude (|re| + |im|), then power spectrum (`mag_power` = 2.0).
+        //    RESOLVED (T2.1d): this mlx-community checkpoint expects senstella's L1
+        //    magnitude, NOT the L2 `|rfft|` that matches NeMo's `torch.stft`. The
+        //    two diverge hugely after mel+log+per-feature-norm (max |Δ| ≈ 1.38 in
+        //    the normalized mel vs the reference, i.e. a different input entirely),
+        //    and L2 produced a garbage transcript. Validated against the Python
+        //    oracle on `ls_test.flac`: L1 reproduces the reference mel to ~1e-2.
+        let magnitude = MLX.abs(spectrum.realPart()) + MLX.abs(spectrum.imaginaryPart())
         let power = magnitude.pow(config.magPower)
 
         // 5. Mel projection + log. filters[mels, freqs] @ power[freqs, t] → [mels, t].

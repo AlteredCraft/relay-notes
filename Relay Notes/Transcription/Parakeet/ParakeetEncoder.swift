@@ -239,7 +239,18 @@ nonisolated final class ParakeetConformerEncoder: Module {
             weights[String(key.dropFirst(prefix.count))] = cast
         }
 
-        encoder.update(parameters: ModuleParameters.unflattened(weights))
+        // `verify: .noUnusedKeys` throws if any (stripped) encoder weight isn't
+        // consumed — catching key mismatches at load instead of silently leaving
+        // a param at random init (see ParakeetDecoder.load for the full rationale).
+        do {
+            try encoder.update(parameters: ModuleParameters.unflattened(weights), verify: .noUnusedKeys)
+        } catch {
+            throw LoadError.weightsLoadFailed(error)
+        }
+        // MLXNN Modules default to training mode; the conv-module BatchNorm must
+        // run in eval (use the loaded running_mean/var, not batch stats). The
+        // Python reference does the same via `model.eval()`.
+        encoder.train(false)
         return encoder
     }
 }

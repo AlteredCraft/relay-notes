@@ -21,6 +21,7 @@
 		9C8B28FADF29E62CC1D52D00 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = 9A2C4347C3F5928735C6784F /* MLXNN */; };
 		B437821D1676E919572316D1 /* WhisperModelStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A08A2616E8FB1A6AA892A1 /* WhisperModelStoreTests.swift */; };
 		B8034ECE7DE0AB51905F0833 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = A6C34CFD99CF390A32455653 /* MLX */; };
+		C1FA99170038C27FD5513069 /* ParakeetTokenizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C4726B4B1C7A61B5EE2DC35 /* ParakeetTokenizerTests.swift */; };
 		DA3E02B8F7270F5FA563B2FD /* RecorderPlaceholderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB99EE148BDB3FB62B72E89F /* RecorderPlaceholderTests.swift */; };
 		E6503295C37AA7BAF2CDDFB5 /* WhisperMLXTranscriberTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F439F4805AC7EB57EC25BBB0 /* WhisperMLXTranscriberTests.swift */; };
 		FEDEA01723A745D450072EA8 /* ReTranscriberTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444EF6210416D1827CE9ADFD /* ReTranscriberTests.swift */; };
@@ -54,6 +55,7 @@
 		6AB135C7EC8F8041E9632C5B /* NoteTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NoteTests.swift; path = "Relay NotesTests/NoteTests.swift"; sourceTree = "<group>"; };
 		75A08A2616E8FB1A6AA892A1 /* WhisperModelStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperModelStoreTests.swift; path = "Relay NotesTests/WhisperModelStoreTests.swift"; sourceTree = "<group>"; };
 		941ECE5486B3F396081D7DDC /* WhisperTokenizerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperTokenizerTests.swift; path = "Relay NotesTests/WhisperTokenizerTests.swift"; sourceTree = "<group>"; };
+		9C4726B4B1C7A61B5EE2DC35 /* ParakeetTokenizerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ParakeetTokenizerTests.swift; path = "Relay NotesTests/ParakeetTokenizerTests.swift"; sourceTree = "<group>"; };
 		B4307D11F9D6B95E232E9FBF /* Relay NotesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Relay NotesTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		CF7ADA49789024E33BF5EEA7 /* WhisperChunkingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperChunkingTests.swift; path = "Relay NotesTests/WhisperChunkingTests.swift"; sourceTree = "<group>"; };
 		DB99EE148BDB3FB62B72E89F /* RecorderPlaceholderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RecorderPlaceholderTests.swift; path = "Relay NotesTests/RecorderPlaceholderTests.swift"; sourceTree = "<group>"; };
@@ -153,6 +155,7 @@
 				DB99EE148BDB3FB62B72E89F /* RecorderPlaceholderTests.swift */,
 				444EF6210416D1827CE9ADFD /* ReTranscriberTests.swift */,
 				129067A590AEB2F6276A33BC /* ParakeetConfigTests.swift */,
+				9C4726B4B1C7A61B5EE2DC35 /* ParakeetTokenizerTests.swift */,
 			);
 			name = "Relay NotesTests";
 			sourceTree = SOURCE_ROOT;
@@ -284,6 +287,7 @@
 				DA3E02B8F7270F5FA563B2FD /* RecorderPlaceholderTests.swift in Sources */,
 				FEDEA01723A745D450072EA8 /* ReTranscriberTests.swift in Sources */,
 				0EE636621C9FC8E34DC2BCFE /* ParakeetConfigTests.swift in Sources */,
+				C1FA99170038C27FD5513069 /* ParakeetTokenizerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

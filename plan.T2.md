@@ -45,8 +45,13 @@ Branch: **`t2-parakeet`** (off `t1.3-measurements`; T1.3 is not yet merged to ma
 | **T2.1a** | Config types + weight-load footprint smoke | ✅ done, device-validated 2026-06-13 |
 | **T2.1b** | Mel front-end (featurizer) | ✅ done, device-validated 2026-06-13 (`[1, 667, 128]`, per-feature mean ≈ 0) |
 | **T2.1c** | FastConformer encoder | ✅ done, device-validated 2026-06-13 (`[1, 84, 1024]`; fwd 130 ms; **peak 1.31 GB → no entitlement**) |
-| **T2.1d** | TDT greedy decoder + vocab decode (substring gate) | ⬜ **next** |
-| **T2.1e** | Long-audio chunking (overlap + token merge) | ⬜ |
+| **T2.1d** | TDT greedy decoder + vocab decode (substring gate) | ✅ done, **device substring PASS 2026-06-13** (word-perfect transcript; 287 ms) |
+| **T2.1e** | Long-audio chunking (overlap + token merge) | ⬜ **next** |
+
+**🎉 The model port (T2.1b–d) is complete and device-validated.** `ls_test.flac` decodes
+to *"Then the good soul openly shouldered the burden she had borne so long in secret, and
+bravely trudged on alone."* — byte-matching the Python reference. Only T2.1e (long-audio
+chunking) remains before the provider-spine wiring (T2.2–T2.5).
 | **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ⬜ |
 | **T2.3** | Per-engine gating (retire the single `whisperReady` Bool) | ⬜ |
 | **T2.4** | Factory: single live MLX engine (evict on switch) | ⬜ |
@@ -61,9 +66,14 @@ Branch: **`t2-parakeet`** (off `t1.3-measurements`; T1.3 is not yet merged to ma
   (`ParakeetRelPosAttention`) + `parakeetRelPositionalEncoding`.
 - `Relay Notes/Transcription/Parakeet/ParakeetEncoder.swift` — **T2.1c** FastConformer
   (`ParakeetConformerEncoder` + FF/conv/block/subsampling) + incremental cast-release `load`.
+- `Relay Notes/Transcription/Parakeet/ParakeetDecoder.swift` — **T2.1d** prediction net
+  (`ParakeetPredictNetwork` + LSTM stack), `ParakeetJointNetwork`, and `ParakeetTDTModel`
+  (encoder+decoder+joint + TDT greedy `decodeGreedy` + `transcribe` + full-model `load`).
+- `Relay Notes/Transcription/Parakeet/ParakeetTokenizer.swift` — **T2.1d** `parakeetDecodeTokens`
+  (id→text, `▁`→space). `Relay NotesTests/ParakeetTokenizerTests.swift` — 3 sim-safe tests.
 - `Relay Notes/Transcription/Parakeet/ParakeetSmoke.swift` — DEBUG device harness (`os.Logger`);
-  T2.1b `runFeaturizer()` + T2.1c `runEncoder()` (load + forward + peak footprint). `run()`
-  now does featurizer→encoder; T2.1a `runLoadFootprint()` retained but no longer auto-run.
+  T2.1b `runFeaturizer()` + T2.1c `runEncoder()` + T2.1d `runDecode()` (full model → transcribe →
+  substring gate + peak). `run()` now does featurizer→decode; T2.1a/T2.1c retained, not auto-run.
 - `Relay NotesTests/ParakeetConfigTests.swift` — 5 config-decode tests (added explicit-null preemph).
 - `Relay Notes/Views/SettingsView.swift` — "Run Parakeet smoke (console)" debug button.
 - `Relay Notes/Transcription/WhisperModelStore.swift` — `DownloadCoordinator` hardened
@@ -276,10 +286,17 @@ the T2.1d substring check is the confirmation.
 **symmetric** form (`/(n-1)`) — subtly different. Match the Python (periodic). Our
 `WhisperAudio.hanning` already implements the periodic form — copy that shape.
 
-**RISK 3 — magnitude L1 vs L2 (MEDIUM):** the Swift port uses `abs(complex)` (true magnitude,
-L2). The Python uses a `mx.view`+`[::2]+[1::2]` trick = `|real| + |imag|` (L1 approximation).
-These differ. Start with the clean L2 magnitude (`MLX.abs` on the complex rfft output); if the
-substring check fails, this is a knob to try.
+**RISK 3 — magnitude L1 vs L2 (was "MEDIUM"; actually decisive) — RESOLVED in T2.1d → L1.**
+The plan said "start with L2 (`MLX.abs` on the rfft); flip if it fails." It failed — and this
+was NOT a medium risk: L2 vs L1 (`|re| + |im|`) diverge **enormously** after mel + log +
+per-feature-norm (**max |Δ| ≈ 1.38** in the normalized mel vs the reference — a different input
+entirely; L2 gave a garbage transcript). This mlx-community checkpoint expects senstella's **L1**.
+**Done:** `MLX.abs(spectrum.realPart()) + MLX.abs(spectrum.imaginaryPart())`. Validated by
+reproducing the featurizer in Python and diffing against the oracle on `ls_test.flac`: L1
+matches to ~1e-2 (the residual is the 667-vs-668 frame count, negligible). Lesson: don't trust
+"NeMo trained on L2 so L2 is right" — match the **mlx-community conversion's** featurizer, which
+is senstella's. (RISK 4 — the Slaney mel *scale* — was validated numerically perfect vs librosa,
+diff 2.9e-09.)
 
 **Validation (T2.1b smoke section):** compute the mel on `ls_test.flac` (load PCM via the
 existing `WhisperAudio.loadPCM` — engine-agnostic 16 kHz mono Float32) and log shape
@@ -360,6 +377,27 @@ Read `RNNT.swift` + `Tokenizer.swift` (and `rnnt.py`). The decode loop (from `Pa
 TDT decode → text) and asserts the transcript contains *"openly shouldered the burden"*
 (case-insensitive). **This is the gate that confirms the whole port** (and arbitrates the §5.2
 risks). Log the transcript + PASS/FAIL.
+
+**Port status (T2.1d — DONE, device substring PASS 2026-06-13).** `ParakeetDecoder.swift`
+(`ParakeetPredictNetwork` + `ParakeetLSTMStack` + `ParakeetJointNetwork` + `ParakeetTDTModel`)
+and `ParakeetTokenizer.swift`. Two bugs surfaced *after* the encoder was already byte-correct —
+both found by **comparing against the Python oracle on the Mac, not by device round-trips**:
+- **BatchNorm was in training mode** (encoder used batch stats, not the loaded running stats).
+  MLXNN Modules default to `training = true`; the loaders now call `model.train(false)` (the
+  Python `model.eval()`). A subtle one: training-mode BatchNorm still produces *normalized-looking*
+  output, so the T2.1c shape/range smoke didn't catch it — only the end-to-end decode did.
+- **The joint's final Linear silently didn't load** — `let jointNet: [Module]` keyed as `jointNet`,
+  but the safetensors key is `joint_net`. MLXNN derives an *unwrapped array's* key from the
+  property **name** (no `@ModuleInfo` override path), so the camelCase name missed the snake_case
+  key and `update(verify: .none)` skipped it → random final projection → real-but-wrong tokens.
+  **Fix: name the property `joint_net`** (the encoder's `layers`/`conv`/`lstm` arrays match for
+  the same reason — single words). **Both loaders now use `update(verify: .noUnusedKeys)`** so a
+  future key mismatch throws at load (naming the unused weight) instead of producing silent garbage.
+- **Debugging method worth reusing:** reimplementing our exact Swift decode loop in Python on the
+  reference weights produced the *correct* transcript → proved the logic was right and isolated the
+  bug to mlx-swift loading. Scripts in `/tmp/parakeet_check/` (featurizer_diff.py, decode_reimpl.py).
+- Single-step decode (batch 1, seq 1) made the LSTM axis ambiguity moot; mlx-swift's `LSTM` matches
+  mlx-python's gate order (i,f,g,o) so `Wx`/`Wh`/`bias` load directly.
 
 ### 5.5 Long-audio chunking (T2.1e)
 
