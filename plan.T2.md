@@ -59,10 +59,17 @@ the overlap region (decoded by one chunk only, the merge uninvolved); it's edge-
 recognition variance from the deliberately tiny smoke window, not a merge defect, and is largely
 moot at the 120 s/15 s production default. **Nothing in T2.1 remains.** Next is the
 provider-spine wiring (T2.2–T2.5).
-| **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ✅ done 2026-06-13; **store-wired smoke green on device** (readiness/already-present path); sim-validated (spec + readiness + integrity helper); only *fresh*-download integrity device-unrun (files present → `.ready` fast path); background `URLSession` deferred (open-Q #6) |
-| **T2.3** | Per-engine gating (retire the single `whisperReady` Bool) | ⬜ |
+| **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ✅ **done + fully device-validated 2026-06-13**: bundle deleted on-device (DEBUG button) → 2.5 GB re-downloaded → SHA-256-verified → smoke PASS. Background `URLSession` deferred (open-Q #6) |
+| **T2.3** | Per-engine gating (retire the single `whisperReady` Bool) | ⬜ **← START HERE** |
 | **T2.4** | Factory: single live MLX engine (evict on switch) | ⬜ |
 | **T2.5** | Wire engine end-to-end (enum/options/factory/UI/provenance/tests) | ⬜ |
+
+**Where to pick up (new session):** T2.0–T2.2 are done and device-validated — the Parakeet model
+port works end-to-end on the iPhone 15 Pro Max and downloads through the generalized store with
+integrity checking. **Next is T2.3** (per-engine gating), then T2.4 → T2.5; all three are
+provider-spine wiring (no more MLX numerics). See §6 (integration points) + §8 (stage-by-stage).
+A throwaway DEBUG "Delete Parakeet model" button exists in `SettingsView` to force a fresh
+download; **T2.5 should replace it** with the real `ParakeetModelSection`.
 
 **Shipped so far** (committed on `t2-parakeet`):
 - `Relay Notes/Transcription/Parakeet/ParakeetConfig.swift` — `Codable` config types.
@@ -175,10 +182,11 @@ single-stream downloads stall. The default 60 s `timeoutIntervalForRequest` abor
 transfer on one stall. `DownloadCoordinator` is hardened (300 s request timeout,
 `waitsForConnectivity`).
 
-**Status (T2.2):** ✅ **resume/retry added** — on a transient failure the coordinator
-re-issues up to 5×, resuming from `NSURLSessionDownloadTaskResumeData` when the server supports
-range requests (HF Xet/S3 does) so a `-1001` stall doesn't discard on-disk bytes, else restarting
-the file; the typed `FailureReason`→generic-actionable-message UX is reused as-is. ⏸️ **The
+**Status (T2.2):** ✅ **resume/retry added + device-validated** — on a transient failure the
+coordinator re-issues up to 5×, resuming from `NSURLSessionDownloadTaskResumeData` when the server
+supports range requests (HF Xet/S3 does) so a `-1001` stall doesn't discard on-disk bytes, else
+restarting the file; the typed `FailureReason`→generic-actionable-message UX is reused as-is. A
+fresh 2.5 GB Parakeet download completed cleanly on-device 2026-06-13. ⏸️ **The
 background `URLSession` is deferred** (open-Q #6): for a one-time, app-foregrounded sideload
 download, resume-on-stall covers the observed failure, and a background session's relaunch
 lifecycle (persisted state, `handleEventsForBackgroundURLSession`, a continuation that can't
@@ -576,7 +584,7 @@ For each: **goal · do · validate · gotchas · done-when.**
   (the 50 %-overlap smoke setting re-encodes more; ~12 % at production overlap).
 - **Done-when:** ✅ `runChunked` PASS on device.
 
-### T2.2 — Generalize the download store ✅ code-complete (fresh-download integrity device-pending)
+### T2.2 — Generalize the download store ✅ DONE (fully device-validated)
 - **Done:** `DownloadableModelStore.swift` — `ModelDownloadSpec` = `{ subdirectory, remoteFiles
   [{url, sha256, size, destFilename}], bundledFiles, downloadSizeMB }`, the generic
   `DownloadableModelStore` (N remote files, per-file SHA-256+size verify, byte-weighted progress,
@@ -588,14 +596,13 @@ For each: **goal · do · validate · gotchas · done-when.**
   `WhisperModelStoreTests` green; build + full suite green.
 - **Deferred:** true background `URLSession` (§3.4 / open-Q #6) — resume-on-stall covers the
   observed failure for the foregrounded one-time download.
-- **Device-validated 2026-06-13 (iPhone 15 Pro Max):** the store-wired `ParakeetSmoke` ran green —
-  `ParakeetModelStore` resolved the directory + detected readiness (both remote files present) via
-  the new multi-file check and ran the full T2.1b/d/e pipeline (substring PASS, chunking PASS).
-- **Still device-unrun:** a *fresh* integrity-checked download (the device had the files → `.ready`
-  fast path). To exercise: delete the bundle on-device, run the smoke, confirm download + SHA-256 verify.
+- **Fully device-validated 2026-06-13 (iPhone 15 Pro Max):** deleted the bundle via the DEBUG
+  "Delete Parakeet model" button → re-downloaded the 2.5 GB `model.safetensors` + `config.json`
+  fresh → **SHA-256 + size verified** → installed → the full T2.1b/d/e pipeline ran green
+  (substring PASS, chunking PASS). The store's `.missing`→`.downloading`→`.ready` flow and the
+  integrity gate are confirmed on real hardware, not just unit tests.
 - **Done-when:** ✅ both models resolve through one store type with integrity check + generic error
-  UX (spec/readiness/integrity-helper unit-validated; readiness path device-confirmed; fresh download
-  device-runnable on demand).
+  UX; the Parakeet fresh download + verify is device-confirmed.
 
 ### T2.3 — Per-engine gating
 - **Do:** replace the single `whisperReady: Bool` with per-engine readiness. Touches
