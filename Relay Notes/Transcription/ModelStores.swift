@@ -64,6 +64,16 @@ final class ModelStores {
         self.cleanup = cleanup
     }
 
+    /// All-explicit overload — lets a test pin every store to a temp directory so
+    /// engine readiness is deterministic *while* the cleanup store is `.ready`,
+    /// which is what makes "a ready cleanup model is excluded from engine gating"
+    /// (the design choice this registry encodes) directly assertable.
+    init(whisper: WhisperModelStore, parakeet: ParakeetModelStore, cleanup: CleanupModelStore) {
+        self.whisper = whisper
+        self.parakeet = parakeet
+        self.cleanup = cleanup
+    }
+
     /// The download store backing `engine`, or `nil` for engines with no
     /// downloadable model (Apple Speech ships with the OS). The compiler-enforced
     /// switch is the one place the engine ↔ store mapping lives.

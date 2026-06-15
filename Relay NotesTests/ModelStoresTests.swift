@@ -147,4 +147,55 @@ struct ModelStoresTests {
             parakeet: ParakeetModelStore(modelDirectory: pDir))
         #expect(stores.readyEngines == [.apple, .whisperMLX, .parakeetMLX])
     }
+
+    // MARK: - Cleanup-store wiring (GH #13)
+    //
+    // The L2 cleanup store is a sibling in the registry but is **not** a
+    // `TranscriptionEngine`: it must be reachable for cleanup gating yet stay out of
+    // the engine `store(for:)` / `readyEngines` machinery. A future refactor could
+    // silently fold it into engine gating, so these pin the exclusion.
+
+    /// A cleanup store backed by a dir holding placeholders for every spec remote
+    /// file → `.ready` (matches `CleanerTests`' readiness setup).
+    private func readyCleanupStore(in dir: URL) -> CleanupModelStore {
+        for file in ModelDownloadSpec.gemmaCleanupE2B.remoteFiles {
+            try? Data("x".utf8).write(to: dir.appendingPathComponent(file.destFilename))
+        }
+        let store = CleanupModelStore(modelDirectory: dir)
+        store.refreshStatus()
+        return store
+    }
+
+    @Test func cleanupStoreReachableViaInit() {
+        let dir = makeTempDirectory()
+        defer { cleanup(dir) }
+        let store = CleanupModelStore(modelDirectory: dir)
+        let stores = ModelStores(cleanup: store)
+        #expect(stores.cleanup === store)
+    }
+
+    @Test func cleanupStoreIsNotReachableViaStoreForAnyEngine() {
+        let dir = makeTempDirectory()
+        defer { cleanup(dir) }
+        let stores = ModelStores(cleanup: CleanupModelStore(modelDirectory: dir))
+        // No engine resolves to the cleanup store — it's outside the engine mapping.
+        for engine in TranscriptionEngine.allCases {
+            #expect(stores.store(for: engine) !== stores.cleanup)
+        }
+    }
+
+    @Test func readyCleanupModelIsExcludedFromReadyEngines() {
+        // Both transcription engines pinned to empty temp dirs (→ not ready) while
+        // the cleanup model IS ready. A ready cleanup model must not inflate
+        // `readyEngines` — it isn't a selectable transcription engine.
+        let wDir = makeTempDirectory(); let pDir = makeTempDirectory(); let cDir = makeTempDirectory()
+        defer { cleanup(wDir); cleanup(pDir); cleanup(cDir) }
+        let cleanupStore = readyCleanupStore(in: cDir)
+        let stores = ModelStores(
+            whisper: WhisperModelStore(modelDirectory: wDir),
+            parakeet: ParakeetModelStore(modelDirectory: pDir),
+            cleanup: cleanupStore)
+        #expect(stores.cleanup.status == .ready)  // exclusion is meaningful, not vacuous
+        #expect(stores.readyEngines == [.apple])
+    }
 }
