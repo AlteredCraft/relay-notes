@@ -69,7 +69,12 @@ struct ContentView: View {
                     tunings: tunings
                 )
                 reTranscriber = ReTranscriber(factory: factory, stores: stores)
-                cleaner = Cleaner(store: stores.cleanup)
+                // Read personalization live at clean time off the shared `tunings`,
+                // so Tuning-sheet edits apply on the next "Clean up" with no rewiring.
+                cleaner = Cleaner(
+                    store: stores.cleanup,
+                    personalization: { tunings.cleanupPersonalization }
+                )
             }
         }
     }

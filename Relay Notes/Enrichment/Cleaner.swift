@@ -30,10 +30,30 @@ final class Cleaner {
     static let modelLabel = "Gemma 4 E2B (MLX 4-bit)"
 
     @ObservationIgnored private let store: CleanupModelStore
-    @ObservationIgnored private var model: MLXLanguageModel?
+    /// The loaded model, cached across cleans and evicted on leave. `any
+    /// LanguageModel` (not the concrete MLX type) so tests can inject a fake —
+    /// the actual `clean` is device-only (MLX can't run on the simulator).
+    @ObservationIgnored private var model: (any LanguageModel)?
+    /// Supplies the current cleanup personalization at clean time, so edits in the
+    /// Tuning sheet take effect on the next "Clean up" with no rewiring. Read on
+    /// the main actor inside `clean`. Defaults to `.none` (previews / tests).
+    @ObservationIgnored private let personalization: @MainActor () -> CleanupPersonalization
+    /// Builds the model on first `clean`. The default builds the on-device MLX
+    /// model from the store's downloaded directory; tests inject a fake. This is
+    /// the seam that makes the personalization-forwarding path testable off-device.
+    @ObservationIgnored private let makeModel: @MainActor () -> any LanguageModel
 
-    init(store: CleanupModelStore) {
+    init(
+        store: CleanupModelStore,
+        personalization: @escaping @MainActor () -> CleanupPersonalization = { .none },
+        makeModel: (@MainActor () -> any LanguageModel)? = nil
+    ) {
         self.store = store
+        self.personalization = personalization
+        self.makeModel = makeModel ?? {
+            MLXLanguageModel(
+                source: .directory(store.modelDirectory), modelDescription: Cleaner.modelLabel)
+        }
     }
 
     /// Whether cleanup can run right now — true only when the model is downloaded
@@ -46,10 +66,9 @@ final class Cleaner {
     /// gates on `isAvailable`, but the model could be deleted between gate and tap).
     func clean(_ note: Note) async throws -> Outcome {
         guard store.status == .ready else { throw LanguageModelError.modelUnavailable }
-        let model = model ?? MLXLanguageModel(
-            source: .directory(store.modelDirectory), modelDescription: Self.modelLabel)
+        let model = model ?? makeModel()
         self.model = model
-        let cleaned = try await model.clean(note.transcript)
+        let cleaned = try await model.clean(note.transcript, personalization: personalization())
         return Outcome(raw: note.transcript, cleaned: cleaned, modelLabel: Self.modelLabel)
     }
 

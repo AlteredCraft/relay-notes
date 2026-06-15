@@ -27,6 +27,7 @@
 		8DD8FC687DDC9D39C123DAC7 /* CleanerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91B9BD92C2A6248B2CDC719B /* CleanerTests.swift */; };
 		973F46D10FF15784BEAD20F6 /* MLXRandom in Frameworks */ = {isa = PBXBuildFile; productRef = B1D487B9F07A0DB95BD79522 /* MLXRandom */; };
 		9C8B28FADF29E62CC1D52D00 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = 9A2C4347C3F5928735C6784F /* MLXNN */; };
+		B0997A0D09841B4659F1C410 /* CleanupPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83FD37006ACB4E6BBEAA2D49 /* CleanupPromptTests.swift */; };
 		B437821D1676E919572316D1 /* WhisperModelStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A08A2616E8FB1A6AA892A1 /* WhisperModelStoreTests.swift */; };
 		B48E8531807797F3F698D47E /* ModelStoresTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43455944560607C219EBB257 /* ModelStoresTests.swift */; };
 		B8034ECE7DE0AB51905F0833 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = A6C34CFD99CF390A32455653 /* MLX */; };
@@ -66,6 +67,7 @@
 		6AB135C7EC8F8041E9632C5B /* NoteTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NoteTests.swift; path = "Relay NotesTests/NoteTests.swift"; sourceTree = "<group>"; };
 		75A08A2616E8FB1A6AA892A1 /* WhisperModelStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperModelStoreTests.swift; path = "Relay NotesTests/WhisperModelStoreTests.swift"; sourceTree = "<group>"; };
 		7E217E509BA59BD542D3A231 /* ParakeetStreamingSessionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ParakeetStreamingSessionTests.swift; path = "Relay NotesTests/ParakeetStreamingSessionTests.swift"; sourceTree = "<group>"; };
+		83FD37006ACB4E6BBEAA2D49 /* CleanupPromptTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CleanupPromptTests.swift; path = "Relay NotesTests/CleanupPromptTests.swift"; sourceTree = "<group>"; };
 		91B9BD92C2A6248B2CDC719B /* CleanerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CleanerTests.swift; path = "Relay NotesTests/CleanerTests.swift"; sourceTree = "<group>"; };
 		941ECE5486B3F396081D7DDC /* WhisperTokenizerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WhisperTokenizerTests.swift; path = "Relay NotesTests/WhisperTokenizerTests.swift"; sourceTree = "<group>"; };
 		9C4726B4B1C7A61B5EE2DC35 /* ParakeetTokenizerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ParakeetTokenizerTests.swift; path = "Relay NotesTests/ParakeetTokenizerTests.swift"; sourceTree = "<group>"; };
@@ -179,6 +181,7 @@
 				43455944560607C219EBB257 /* ModelStoresTests.swift */,
 				7E217E509BA59BD542D3A231 /* ParakeetStreamingSessionTests.swift */,
 				91B9BD92C2A6248B2CDC719B /* CleanerTests.swift */,
+				83FD37006ACB4E6BBEAA2D49 /* CleanupPromptTests.swift */,
 			);
 			name = "Relay NotesTests";
 			sourceTree = SOURCE_ROOT;
@@ -323,6 +326,7 @@
 				B48E8531807797F3F698D47E /* ModelStoresTests.swift in Sources */,
 				0563BEC9499A74F7DC1082F6 /* ParakeetStreamingSessionTests.swift in Sources */,
 				8DD8FC687DDC9D39C123DAC7 /* CleanerTests.swift in Sources */,
+				B0997A0D09841B4659F1C410 /* CleanupPromptTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -29,6 +29,19 @@ struct WhisperSettings: Sendable, Equatable {}
 /// symmetric and future dials have a place to land.
 struct ParakeetSettings: Sendable, Equatable {}
 
+/// Editable / persisted personalization for **cleanup** (the LLM enrichment pass),
+/// mirroring `AppleSpeechSettings`: raw user text lives here; `Tunings`
+/// converts it to the domain `CleanupPersonalization` (via `cleanupPersonalization`)
+/// that crosses the `LanguageModel` boundary, exactly as `apple` →
+/// `transcriptionOptions`. Cleanup is not a transcription engine, so this sits
+/// outside the per-engine bundles and applies regardless of `engine`.
+struct CleanupSettings: Sendable, Equatable {
+    /// Subject areas / domains the user's notes cover (free text).
+    var domains: String = ""
+    /// Names, jargon, and acronyms the cleanup model should spell correctly (free text).
+    var terms: String = ""
+}
+
 @MainActor
 @Observable
 final class Tunings {
@@ -38,6 +51,8 @@ final class Tunings {
         static let preset = "tunings.preset"
         static let contextualStringsText = "tunings.contextualStringsText"
         static let engine = "tunings.engine"
+        static let cleanupDomains = "tunings.cleanupDomains"
+        static let cleanupTerms = "tunings.cleanupTerms"
     }
 
     @ObservationIgnored
@@ -82,6 +97,17 @@ final class Tunings {
     /// No persisted fields yet — reserved (see `ParakeetSettings`).
     var parakeet: ParakeetSettings
 
+    // MARK: Cleanup (LLM enrichment) — applies regardless of engine
+
+    /// Personalization for the cleanup pass — domain context + terms to spell
+    /// correctly. Persisted under its own keys; consumed via `cleanupPersonalization`.
+    var cleanup: CleanupSettings {
+        didSet {
+            defaults.set(cleanup.domains, forKey: Key.cleanupDomains)
+            defaults.set(cleanup.terms, forKey: Key.cleanupTerms)
+        }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
 
@@ -118,6 +144,12 @@ final class Tunings {
         // Whisper / Parakeet bundles — nothing persisted yet.
         self.whisper = WhisperSettings()
         self.parakeet = ParakeetSettings()
+
+        // Cleanup personalization — restored from its own keys.
+        self.cleanup = CleanupSettings(
+            domains: defaults.string(forKey: Key.cleanupDomains) ?? "",
+            terms: defaults.string(forKey: Key.cleanupTerms) ?? ""
+        )
     }
 
     func resetToDefaults() {
@@ -127,6 +159,7 @@ final class Tunings {
         apple = AppleSpeechSettings()
         whisper = WhisperSettings()
         parakeet = ParakeetSettings()
+        cleanup = CleanupSettings()
     }
 
     /// Enforces the invariant that a model-backed engine can only be the selected
@@ -166,6 +199,14 @@ final class Tunings {
         case .parakeetMLX:
             return .parakeetMLX
         }
+    }
+
+    /// The cleanup personalization crossing the `LanguageModel` boundary — the
+    /// enrichment analogue of `transcriptionOptions`. Carries the raw text;
+    /// trimming / empty-handling and the prompt wording live in
+    /// `CleanupPersonalization` / `CleanupPrompt`.
+    var cleanupPersonalization: CleanupPersonalization {
+        CleanupPersonalization(domains: cleanup.domains, terms: cleanup.terms)
     }
 
     private static func presetID(_ preset: SpeechTranscriber.Preset) -> String {

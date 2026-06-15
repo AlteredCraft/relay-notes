@@ -25,13 +25,34 @@ nonisolated protocol LanguageModel: Sendable {
     /// run-ons and punctuation, add light structure — **preserving the speaker's
     /// meaning and all content.** No summarizing, no invented facts (the cardinal
     /// sin: an LLM "improving" a note by inventing detail is worse than a raw
-    /// transcript). The instruction text is centralized in `CleanupPrompt` (L2.1)
-    /// so swapping providers never changes behavior.
-    func clean(_ raw: String) async throws -> String
+    /// transcript).
+    ///
+    /// `personalization` carries the user's domain context (subject areas + the
+    /// names/jargon/acronyms to spell correctly). It biases recognition-error
+    /// fixes only — never licenses adding content. Pass `.none` for the
+    /// un-personalized prompt (or use the `clean(_:)` convenience). The instruction
+    /// text — including how personalization is framed — is centralized in
+    /// `CleanupPrompt` (L2.1) so swapping providers never changes behavior.
+    func clean(_ raw: String, personalization: CleanupPersonalization) async throws -> String
+
+    /// Release any loaded weights / GPU buffers so the model isn't resident while
+    /// idle (and isn't co-resident with another MLX engine — §3.3). A no-op for
+    /// stateless providers (e.g. a future cloud model). Part of the spine so
+    /// `Cleaner` can manage lifecycle through `any LanguageModel` rather than the
+    /// concrete conformer — which is also what makes it injectable for tests.
+    func evict() async
 
     // L3 will add this additively — designed in now so adding it isn't a reshape:
     //   func categorize(_ note: String, into allowed: [String]) async throws -> Categorization
     // The model picks from `allowed`; it never invents categories (notes.md).
+}
+
+extension LanguageModel {
+    /// Convenience for callers with no personalization (DEBUG smoke, previews,
+    /// tests). Equivalent to `clean(raw, personalization: .none)`.
+    func clean(_ raw: String) async throws -> String {
+        try await clean(raw, personalization: .none)
+    }
 }
 
 /// Errors surfaced by a `LanguageModel`. Kept generic at the boundary; the UI maps

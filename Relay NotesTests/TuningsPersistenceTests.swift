@@ -174,6 +174,8 @@ struct TuningsPersistenceTests {
         let tunings = Tunings(defaults: makeDefaults())
         tunings.apple.preset = .progressiveTranscription
         tunings.apple.contextualStringsText = "MLX"
+        tunings.cleanup.domains = "iOS dev"
+        tunings.cleanup.terms = "MLX"
         tunings.engine = .whisperMLX
 
         tunings.resetToDefaults()
@@ -181,6 +183,53 @@ struct TuningsPersistenceTests {
         #expect(tunings.apple == AppleSpeechSettings())
         #expect(tunings.whisper == WhisperSettings())
         #expect(tunings.parakeet == ParakeetSettings())
+        #expect(tunings.cleanup == CleanupSettings())
         #expect(tunings.engine == .apple)
+    }
+
+    // MARK: - Cleanup personalization bundle (applies regardless of engine)
+
+    @Test func cleanupBundleDefaultsWhenUnset() {
+        let tunings = Tunings(defaults: makeDefaults())
+        #expect(tunings.cleanup == CleanupSettings())
+        #expect(tunings.cleanup.domains.isEmpty)
+        #expect(tunings.cleanup.terms.isEmpty)
+        #expect(tunings.cleanupPersonalization.isEmpty)
+    }
+
+    @Test func cleanupBundleRoundTripsThroughUserDefaults() {
+        let defaults = makeDefaults()
+        let writer = Tunings(defaults: defaults)
+        writer.cleanup.domains = "iOS development, on-device ML"
+        writer.cleanup.terms = "MLX, Parakeet"
+
+        #expect(defaults.string(forKey: "tunings.cleanupDomains") == "iOS development, on-device ML")
+        #expect(defaults.string(forKey: "tunings.cleanupTerms") == "MLX, Parakeet")
+
+        let reader = Tunings(defaults: defaults)
+        #expect(reader.cleanup.domains == "iOS development, on-device ML")
+        #expect(reader.cleanup.terms == "MLX, Parakeet")
+    }
+
+    @Test func cleanupPersonalizationCarriesRawBundle() {
+        let tunings = Tunings(defaults: makeDefaults())
+        tunings.cleanup.domains = "  ML  "
+        tunings.cleanup.terms = "MLX"
+
+        let p = tunings.cleanupPersonalization
+        #expect(p.domains == "  ML  ")   // raw — trimming happens at the prompt edge
+        #expect(p.terms == "MLX")
+        #expect(!p.isEmpty)
+    }
+
+    @Test func cleanupSurvivesEngineSwitch() {
+        // Cleanup is engine-independent; switching engines must not clear it.
+        let tunings = Tunings(defaults: makeDefaults())
+        tunings.cleanup.domains = "ML"
+
+        tunings.engine = .whisperMLX
+        tunings.engine = .apple
+
+        #expect(tunings.cleanup.domains == "ML")
     }
 }

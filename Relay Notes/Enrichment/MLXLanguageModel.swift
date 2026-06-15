@@ -72,13 +72,17 @@ actor MLXLanguageModel: Relay_Notes.LanguageModel {
         return loaded
     }
 
-    func clean(_ raw: String) async throws -> String {
+    func clean(_ raw: String, personalization: CleanupPersonalization) async throws -> String {
         let container = try await loadContainerIfNeeded()
         // Deterministic decode — cleanup must not invent (temperature 0 ⇒ greedy).
         var parameters = GenerateParameters()
         parameters.temperature = 0
+        // Instructions are rebuilt per call, so an edited personalization takes
+        // effect on the next cleanup without reloading the (cached) container.
         let session = ChatSession(
-            container, instructions: CleanupPrompt.system, generateParameters: parameters)
+            container,
+            instructions: CleanupPrompt.system(personalization: personalization),
+            generateParameters: parameters)
         // The raw transcript is the user turn; the tokenizer wraps it in the chat
         // template. `respond` collects the full streamed string.
         let output = try await session.respond(to: raw)

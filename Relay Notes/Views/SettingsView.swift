@@ -38,6 +38,10 @@ struct SettingsView: View {
                 // gates directly on this store's readiness.
                 CleanupModelSection(store: stores.cleanup)
 
+                // Cleanup personalization — domains + terms that bias the cleanup
+                // model. Always shown (applies regardless of the selected engine).
+                CleanupPersonalizationSection(tunings: tunings)
+
                 // Engine-specific recognition settings swap with the selection
                 // (Approach C) — no engine ever shows another engine's dials.
                 switch tunings.engine {
