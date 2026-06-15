@@ -7,7 +7,8 @@ import MLXLMCommon
 /// LLM-enrichment analogue of `WhisperMLXTranscriber` / `ParakeetMLXTranscriber`
 /// (L2.0, plan.L2.md §5.2). Loads a model **container** from an HF repo id via
 /// `mlx-swift-lm`'s `LLMModelFactory` — using our hand-rolled `HuggingFaceBridge`
-/// for the download + tokenizer (no MLXHuggingFace / swift-syntax) — and generates
+/// for the download + tokenizer (so we don't link `MLXHuggingFace`, which would be
+/// the only thing to compile its swift-syntax macro plugin) — and generates
 /// through the high-level `ChatSession`, which applies the model's chat template
 /// via the tokenizer (we never hand-bake it).
 ///

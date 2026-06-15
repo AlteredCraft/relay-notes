@@ -13,7 +13,15 @@ import Tokenizers
 // from mlx-swift-lm's own macro expansions (`MLXHuggingFaceMacros`:
 // `DownloaderMacro` / `TokenizerAdaptorMacro` / `TokenizerLoaderMacro`) and matched
 // to the APIs we actually depend on (swift-huggingface 0.9.0, swift-transformers
-// 1.3.3). Benefit: no swift-syntax, no macro indirection, fully auditable.
+// 1.3.3).
+//
+// Precise benefit: `MLXHuggingFace` is the *only* target in the whole resolved graph
+// that depends on the macro plugin (`MLXHuggingFaceMacros` → swift-syntax). By not
+// linking it, that plugin is never **compiled** for our build — a clean-build / CI
+// time saving. swift-syntax itself stays *resolved* (Package.resolved still pins
+// 600.0.1) and checked out; we only avoid compiling it as a macro plugin. (There's
+// no app-size or runtime cost either way — macros are compile-time; swift-syntax
+// never ships in the binary.) Plus: no macro indirection, fully auditable.
 //
 // If you bump swift-huggingface / swift-transformers and this stops compiling,
 // re-diff against those macros — they are the upstream source of truth.
