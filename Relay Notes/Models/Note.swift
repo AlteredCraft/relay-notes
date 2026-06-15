@@ -25,6 +25,17 @@ final class Note {
     /// design — original and current — not a full history (issue #5).
     var originalTranscript: String?
 
+    /// The LLM-cleaned transcript (de-filler, punctuation, light structure), or
+    /// `nil` when the note has never been cleaned (the default, and the value for
+    /// every note from before cleanup existed — same lightweight additive migration
+    /// as `transcriptionModel`/`originalTranscript`). **Non-destructive:** `transcript`
+    /// always stays the canonical raw text; cleanup never overwrites it (L2.4).
+    var cleanedTranscript: String?
+
+    /// Provenance of the model that produced `cleanedTranscript`, e.g.
+    /// "Gemma 4 E2B (MLX 4-bit)". `nil` when not cleaned. Mirrors `transcriptionModel`.
+    var cleanupModel: String?
+
     init(
         id: UUID = UUID(),
         createdAt: Date = .now,
@@ -32,7 +43,9 @@ final class Note {
         transcript: String,
         title: String? = nil,
         transcriptionModel: String? = nil,
-        originalTranscript: String? = nil
+        originalTranscript: String? = nil,
+        cleanedTranscript: String? = nil,
+        cleanupModel: String? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -41,6 +54,8 @@ final class Note {
         self.title = title
         self.transcriptionModel = transcriptionModel
         self.originalTranscript = originalTranscript
+        self.cleanedTranscript = cleanedTranscript
+        self.cleanupModel = cleanupModel
     }
 }
 
@@ -95,5 +110,21 @@ extension Note {
         guard let originalTranscript else { return }
         transcript = originalTranscript
         self.originalTranscript = nil
+    }
+
+    /// Whether an LLM-cleaned version exists.
+    var isCleaned: Bool { cleanedTranscript != nil }
+
+    /// Store the accepted cleaned transcript + its model provenance. Non-destructive
+    /// — `transcript` (the raw text) is untouched. Caller persists via the context.
+    func applyCleanup(_ text: String, model: String?) {
+        cleanedTranscript = text
+        cleanupModel = model
+    }
+
+    /// Drop the cleaned version (back to raw-only). No-op when not cleaned.
+    func clearCleanup() {
+        cleanedTranscript = nil
+        cleanupModel = nil
     }
 }

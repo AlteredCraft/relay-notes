@@ -84,7 +84,7 @@ struct WhisperMLXTranscriberTests {
         defer { cleanup(tmp) }
         let store = try makeReadyStore(in: tmp)
 
-        let factory = TranscriberFactory(whisperModelStore: store)
+        let factory = TranscriberFactory(stores: ModelStores(whisper: store))
         let transcriber = try #require(factory.transcriber(for: .whisperMLX) as? WhisperMLXTranscriber)
         let location = await transcriber.resolveLocation()
         #expect(location == .directory(tmp))
@@ -181,7 +181,7 @@ struct WhisperMLXTranscriberTests {
 /// Test-only probe that runs *inside* the actor, so the non-Sendable cached
 /// state (`WhisperModel`, `MLXArray`) never crosses the isolation boundary.
 extension WhisperMLXTranscriber {
-    func cacheReusesInstances(at location: WhisperModelLocation) throws -> Bool {
+    func cacheReusesInstances(at location: ModelLocation) throws -> Bool {
         let first = try assets(at: location)
         let second = try assets(at: location)
         return first.model === second.model && first.tokenizer === second.tokenizer

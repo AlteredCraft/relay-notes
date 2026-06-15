@@ -35,7 +35,7 @@ nonisolated enum MLXSmoke {
     /// been downloaded yet. Weights live only in Application Support now (the
     /// 481 MB `weights.safetensors` is no longer copied into the app bundle).
     @MainActor
-    private static func resolveDownloadedModelLocation() -> WhisperModelLocation? {
+    private static func resolveDownloadedModelLocation() -> ModelLocation? {
         let store = WhisperModelStore()
         return store.status == .ready ? store.location : nil
     }
@@ -90,7 +90,7 @@ nonisolated enum MLXSmoke {
 
     // MARK: - T1.1b-3 — model load + encoder
 
-    private static func runWhisperModel(_ location: WhisperModelLocation?) {
+    private static func runWhisperModel(_ location: ModelLocation?) {
         print("[MLXSmoke] WhisperModel:")
         guard let location else {
             print("  model not downloaded — download it from Settings, then re-run. Skipping.")
@@ -134,7 +134,7 @@ nonisolated enum MLXSmoke {
     /// loop end-to-end on device: expect the sentence repeated ~6×, two
     /// decode windows, and a timestamp-guided restart between them (pre-T1.2d-1
     /// this clip would have transcribed only its first 30 s).
-    private static func runWhisperChunked(_ location: WhisperModelLocation?) async {
+    private static func runWhisperChunked(_ location: ModelLocation?) async {
         print("[MLXSmoke] Chunked transcribe (tiled ~36 s):")
         guard let location else {
             print("  model not downloaded — download it from Settings, then re-run. Skipping.")
@@ -178,7 +178,7 @@ nonisolated enum MLXSmoke {
     /// The transcript is repetitive by construction (one ~6.7 s clip tiled) —
     /// this measures decode *cost vs length*, not accuracy (accuracy is the
     /// substring check in `runWhisperTranscribe`).
-    private static func runMeasurements(_ location: WhisperModelLocation?) async {
+    private static func runMeasurements(_ location: ModelLocation?) async {
         print("[MLXSmoke] T1.3 measurements:")
         guard let location else {
             print("  model not downloaded — download it from Settings, then re-run. Skipping.")
@@ -394,7 +394,7 @@ nonisolated enum MLXSmoke {
     /// Two passes through the *same* transcriber instance: the first pays
     /// model load + shader JIT, the second should show T1.2c's asset cache
     /// (expect the gap to be roughly the old per-call load cost).
-    private static func runWhisperTranscribe(_ location: WhisperModelLocation?) async {
+    private static func runWhisperTranscribe(_ location: ModelLocation?) async {
         print("[MLXSmoke] WhisperMLXTranscriber:")
         guard let location else {
             print("  model not downloaded — download it from Settings, then re-run. Skipping.")

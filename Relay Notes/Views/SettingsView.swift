@@ -4,7 +4,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var tunings: Tunings
-    let whisperStore: WhisperModelStore
+    let stores: ModelStores
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
@@ -22,11 +22,21 @@ struct SettingsView: View {
             Form {
                 engineSection
 
-                // Always shown — provisions Whisper *before* it can be selected
-                // (the engine row above is disabled until the model is ready).
-                WhisperModelSection(store: whisperStore) {
-                    tunings.reconcileEngineAvailability(whisperReady: false)
+                // Always shown — provisions each on-device model *before* it can be
+                // selected (the engine rows above are disabled until ready). Both
+                // reconcile after a delete so a deleted model can't back the
+                // current engine selection.
+                WhisperModelSection(store: stores.whisper) {
+                    tunings.reconcileEngineAvailability(readyEngines: stores.readyEngines)
                 }
+                ParakeetModelSection(store: stores.parakeet) {
+                    tunings.reconcileEngineAvailability(readyEngines: stores.readyEngines)
+                }
+
+                // The cleanup (LLM) model — not a transcription engine, so no
+                // engine-availability reconcile; the per-note "Clean up" action
+                // gates directly on this store's readiness.
+                CleanupModelSection(store: stores.cleanup)
 
                 // Engine-specific recognition settings swap with the selection
                 // (Approach C) — no engine ever shows another engine's dials.
@@ -35,6 +45,8 @@ struct SettingsView: View {
                     AppleSpeechSettingsSection(tunings: tunings)
                 case .whisperMLX:
                     WhisperSettingsSection()
+                case .parakeetMLX:
+                    ParakeetSettingsSection()
                 }
 
                 // Shared — capture + storage apply regardless of engine.
@@ -73,7 +85,7 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
 
-            let whisperReady = whisperStore.status == .ready
+            let whisperReady = stores.isReady(.whisperMLX)
             Button {
                 tunings.engine = .whisperMLX
             } label: {
@@ -97,10 +109,35 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
             .disabled(!whisperReady)
+
+            let parakeetReady = stores.isReady(.parakeetMLX)
+            Button {
+                tunings.engine = .parakeetMLX
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("On-device (Parakeet)")
+                            .foregroundStyle(parakeetReady ? .primary : .secondary)
+                        if !parakeetReady {
+                            Text("Download the model below to enable")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    if tunings.engine == .parakeetMLX {
+                        Image(systemName: "checkmark")
+                            .foregroundStyle(.tint)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!parakeetReady)
         } header: {
             Text("Transcription engine")
         } footer: {
-            Text("Apple Speech runs on-device with no model choice. On-device (Whisper) transcribes locally via MLX — it becomes selectable once you download its model below.")
+            Text("Apple Speech runs on-device with no model choice. The On-device engines (Whisper, Parakeet) transcribe locally via MLX — each becomes selectable once you download its model below.")
         }
     }
 
@@ -154,6 +191,11 @@ struct SettingsView: View {
                     await ParakeetSmoke.run()
                 }
             }
+            Button("Run cleanup smoke (console)") {
+                Task.detached(priority: .userInitiated) {
+                    await LLMCleanupSmoke.run()
+                }
+            }
         } header: {
             Text("Debug")
         } footer: {
@@ -164,6 +206,6 @@ struct SettingsView: View {
 }
 
 #Preview {
-    SettingsView(tunings: Tunings(), whisperStore: WhisperModelStore())
+    SettingsView(tunings: Tunings(), stores: ModelStores())
         .modelContainer(for: Note.self, inMemory: true)
 }

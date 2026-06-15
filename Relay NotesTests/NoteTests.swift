@@ -105,4 +105,48 @@ struct NoteTests {
         #expect(fetched.first?.originalTranscript == "machine text")
         #expect(fetched.first?.isEdited == true)
     }
+
+    // MARK: - LLM cleanup (L2.4)
+
+    @Test func newNoteIsNotCleaned() {
+        let note = Note(audioFilename: "a.m4a", transcript: "hello")
+        #expect(note.cleanedTranscript == nil)
+        #expect(note.cleanupModel == nil)
+        #expect(note.isCleaned == false)
+    }
+
+    @Test func applyCleanupStoresTextAndProvenanceNonDestructively() {
+        let note = Note(audioFilename: "a.m4a", transcript: "um hello wrld")
+        note.applyCleanup("Hello, world.", model: "Gemma 4 E2B (MLX 4-bit)")
+        #expect(note.cleanedTranscript == "Hello, world.")
+        #expect(note.cleanupModel == "Gemma 4 E2B (MLX 4-bit)")
+        #expect(note.isCleaned)
+        // Raw transcript is canonical — cleanup never overwrites it.
+        #expect(note.transcript == "um hello wrld")
+    }
+
+    @Test func clearCleanupDropsCleanedCopyButKeepsRaw() {
+        let note = Note(audioFilename: "a.m4a", transcript: "raw")
+        note.applyCleanup("clean", model: "m")
+        note.clearCleanup()
+        #expect(note.cleanedTranscript == nil)
+        #expect(note.cleanupModel == nil)
+        #expect(note.isCleaned == false)
+        #expect(note.transcript == "raw")
+    }
+
+    @Test func cleanupPersistsThroughInsertAndFetch() throws {
+        let context = try makeContext()
+        let note = Note(audioFilename: "a.m4a", transcript: "raw text")
+        note.applyCleanup("clean text", model: "Gemma 4 E2B (MLX 4-bit)")
+        context.insert(note)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<Note>())
+        #expect(fetched.count == 1)
+        #expect(fetched.first?.transcript == "raw text")
+        #expect(fetched.first?.cleanedTranscript == "clean text")
+        #expect(fetched.first?.cleanupModel == "Gemma 4 E2B (MLX 4-bit)")
+        #expect(fetched.first?.isCleaned == true)
+    }
 }

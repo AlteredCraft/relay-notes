@@ -24,7 +24,7 @@ actor WhisperMLXTranscriber: Transcriber {
     /// Provenance label persisted on the `Note` (via the streaming session's
     /// `modelDescription`). `nonisolated static` so the session can read it
     /// without awaiting the actor. v1 ships a single variant; when multiple
-    /// Whisper models land, derive this from the resolved `WhisperModelLocation`
+    /// Whisper models land, derive this from the resolved `ModelLocation`
     /// instead of hardcoding the variant here.
     nonisolated static let modelDescription = "Whisper (small.en)"
 
@@ -32,7 +32,7 @@ actor WhisperMLXTranscriber: Transcriber {
     /// Single-entry cache by design: two `small.en` models resident would be
     /// ~1 GB of fp16 weights — never useful on the target device.
     struct LoadedAssets {
-        let location: WhisperModelLocation
+        let location: ModelLocation
         let model: WhisperModel
         let tokenizer: WhisperTokenizer
         let melFilters: MLXArray
@@ -47,7 +47,7 @@ actor WhisperMLXTranscriber: Transcriber {
     /// invariant (Settings gating + launch reconcile) guarantees a Whisper
     /// session only starts when a `.ready` store resolves to `.directory`, so
     /// the `.bundled` fallback is never hit on the record path.
-    private let fallbackLocation: WhisperModelLocation
+    private let fallbackLocation: ModelLocation
 
     /// T1.2b's download owner. Optional: dev builds and unit tests construct
     /// the transcriber without one.
@@ -55,21 +55,21 @@ actor WhisperMLXTranscriber: Transcriber {
 
     private var cache: LoadedAssets?
 
-    init(store: WhisperModelStore? = nil, fallbackLocation: WhisperModelLocation = .bundled) {
+    init(store: WhisperModelStore? = nil, fallbackLocation: ModelLocation = .bundled) {
         self.store = store
         self.fallbackLocation = fallbackLocation
     }
 
     /// Resolved fresh on every call — never latched — so a model downloaded
     /// (or deleted) mid-session takes effect on the next transcription.
-    func resolveLocation() async -> WhisperModelLocation {
+    func resolveLocation() async -> ModelLocation {
         guard let store else { return fallbackLocation }
         return await store.activeLocation ?? fallbackLocation
     }
 
     /// Returns the cached assets for `location`, loading (and replacing any
     /// previously cached location's assets) on miss.
-    func assets(at location: WhisperModelLocation) throws -> LoadedAssets {
+    func assets(at location: ModelLocation) throws -> LoadedAssets {
         if let cache, cache.location == location { return cache }
         // Release the old model before loading the new one so both weight
         // sets are never resident at once.

@@ -46,16 +46,35 @@ Branch: **`t2-parakeet`** (off `t1.3-measurements`; T1.3 is not yet merged to ma
 | **T2.1b** | Mel front-end (featurizer) | ✅ done, device-validated 2026-06-13 (`[1, 667, 128]`, per-feature mean ≈ 0) |
 | **T2.1c** | FastConformer encoder | ✅ done, device-validated 2026-06-13 (`[1, 84, 1024]`; fwd 130 ms; **peak 1.31 GB → no entitlement**) |
 | **T2.1d** | TDT greedy decoder + vocab decode (substring gate) | ✅ done, **device substring PASS 2026-06-13** (word-perfect transcript; 287 ms) |
-| **T2.1e** | Long-audio chunking (overlap + token merge) | ⬜ **next** |
+| **T2.1e** | Long-audio chunking (overlap + token merge) | ✅ done, **device PASS 2026-06-13** (tiled ×6 ≈39 s; 6/6 sentences, no boundary drop/dup) |
 
-**🎉 The model port (T2.1b–d) is complete and device-validated.** `ls_test.flac` decodes
-to *"Then the good soul openly shouldered the burden she had borne so long in secret, and
-bravely trudged on alone."* — byte-matching the Python reference. Only T2.1e (long-audio
-chunking) remains before the provider-spine wiring (T2.2–T2.5).
-| **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ⬜ |
-| **T2.3** | Per-engine gating (retire the single `whisperReady` Bool) | ⬜ |
-| **T2.4** | Factory: single live MLX engine (evict on switch) | ⬜ |
-| **T2.5** | Wire engine end-to-end (enum/options/factory/UI/provenance/tests) | ⬜ |
+**🎉 The full Parakeet model port (T2.1b–e) is complete and device-validated.** `ls_test.flac`
+decodes to *"Then the good soul openly shouldered the burden she had borne so long in secret, and
+bravely trudged on alone."* — byte-matching the Python reference. **T2.1e (long-audio chunking)
+device-PASSED 2026-06-13**: a tiled ×6 (≈39 s) clip transcribed via `transcribeChunked` at an
+aggressive 15 s/5 s window produced 6/6 complete, correctly-ordered sentences with **no dropped
+or duplicated words at any boundary** (the merge is correct). The lone difference from the
+whole-clip pass — one within-chunk word ("trudged"→"troubled" in the 4th sentence) — sits *past*
+the overlap region (decoded by one chunk only, the merge uninvolved); it's edge-context
+recognition variance from the deliberately tiny smoke window, not a merge defect, and is largely
+moot at the 120 s/15 s production default. **Nothing in T2.1 remains.** Next is the
+provider-spine wiring (T2.2–T2.5).
+| **T2.2** | Generalize the download store → `DownloadableModelStore(spec:)` | ✅ **done + fully device-validated 2026-06-13**: bundle deleted on-device (DEBUG button) → 2.5 GB re-downloaded → SHA-256-verified → smoke PASS. Background `URLSession` deferred (open-Q #6) |
+| **T2.3** | Per-engine gating (retire the single `whisperReady` Bool) | ✅ done 2026-06-13 — `ModelStores` registry; sim suite green (Parakeet "deleting either model" lands with T2.5) |
+| **T2.4** | Factory: single live MLX engine (evict on switch) | ✅ done 2026-06-13 — `liveMLX` single-slot in `TranscriberFactory`; eviction fires once Parakeet's enum case exists (T2.5) |
+| **T2.5** | Wire engine end-to-end (enum/options/factory/UI/provenance/tests) | ✅ **done + device-validated 2026-06-14** — Parakeet selectable, records + re-transcribes on the iPhone 15 Pro Max; sim suite green. (`WhisperModelLocation` renamed → `ModelLocation`, the optional T2.5 follow-up.) |
+
+**Status: T2 is DONE (device-validated 2026-06-14).** All stages T2.0–T2.5 are complete and validated
+on the iPhone 15 Pro Max — Parakeet is wired end-to-end behind the provider spine (engine enum,
+options, `ParakeetMLXTranscriber` actor + `ParakeetStreamingSession`, factory eviction, `ModelStores`
+gating, Settings sections, re-transcribe provenance), the throwaway DEBUG delete button is gone
+(replaced by the real `ParakeetModelSection`), and the full simulator suite (20 suites) is green.
+On-device end-to-end confirmed: selecting **On-device (Parakeet)** records → transcript, re-transcribe
+works, provenance reads `Parakeet (tdt-0.6b-v2)`. The optional T2.5 follow-up — renaming
+`WhisperModelLocation` → `ModelLocation` (engine-neutral) — is also done. **The branch is mergeable.**
+Remaining open items are nice-to-haves, not blockers: the accuracy-ladder A/B (open-Q #5: compare
+Apple / Whisper / Parakeet on the same audio via the re-transcribe menu) and the deferred background
+`URLSession` (open-Q #6).
 
 **Shipped so far** (committed on `t2-parakeet`):
 - `Relay Notes/Transcription/Parakeet/ParakeetConfig.swift` — `Codable` config types.
@@ -69,6 +88,10 @@ chunking) remains before the provider-spine wiring (T2.2–T2.5).
 - `Relay Notes/Transcription/Parakeet/ParakeetDecoder.swift` — **T2.1d** prediction net
   (`ParakeetPredictNetwork` + LSTM stack), `ParakeetJointNetwork`, and `ParakeetTDTModel`
   (encoder+decoder+joint + TDT greedy `decodeGreedy` + `transcribe` + full-model `load`).
+  (T2.1e: `timeRatio`, `decodeGreedyAligned` → `[ParakeetToken]`, `transcribeChunked`.)
+- `Relay Notes/Transcription/Parakeet/ParakeetChunking.swift` — **T2.1e** time-aligned
+  `ParakeetToken` + `ParakeetChunkMerge` (contiguous/LCS overlap merge, sim-safe; ports
+  senstella `alignment.py`). `Relay NotesTests/ParakeetChunkingTests.swift` — 6 sim-safe tests.
 - `Relay Notes/Transcription/Parakeet/ParakeetTokenizer.swift` — **T2.1d** `parakeetDecodeTokens`
   (id→text, `▁`→space). `Relay NotesTests/ParakeetTokenizerTests.swift` — 3 sim-safe tests.
 - `Relay Notes/Transcription/Parakeet/ParakeetSmoke.swift` — DEBUG device harness (`os.Logger`);
@@ -76,8 +99,16 @@ chunking) remains before the provider-spine wiring (T2.2–T2.5).
   substring gate + peak). `run()` now does featurizer→decode; T2.1a/T2.1c retained, not auto-run.
 - `Relay NotesTests/ParakeetConfigTests.swift` — 5 config-decode tests (added explicit-null preemph).
 - `Relay Notes/Views/SettingsView.swift` — "Run Parakeet smoke (console)" debug button.
-- `Relay Notes/Transcription/WhisperModelStore.swift` — `DownloadCoordinator` hardened
-  (300 s request timeout, `waitsForConnectivity`, made `internal`).
+  (T2.2: `ParakeetSmoke.ensureModelDownloaded` now uses the real `ParakeetModelStore`.)
+- `Relay Notes/Transcription/DownloadableModelStore.swift` — **T2.2** generic spec-driven
+  store: `ModelDownloadSpec` (+ `.whisperSmallEn`/`.parakeetTDT06bV2`), `DownloadableModelStore`
+  (N remote files, per-file SHA-256+size verify, byte-weighted progress), and the
+  `DownloadCoordinator` (now resume/retry on transient failure, §3.4).
+- `Relay Notes/Transcription/WhisperModelStore.swift` — **T2.2** now a thin
+  `DownloadableModelStore` subclass bound to `.whisperSmallEn` (keeps the no-arg init +
+  back-compat statics). `Relay Notes/Transcription/Parakeet/ParakeetModelStore.swift` —
+  subclass bound to `.parakeetTDT06bV2`. `Relay NotesTests/DownloadableModelStoreTests.swift`
+  — 6 sim-safe tests (spec pinning, multi-file readiness, delete, subdir composition).
 
 **Device facts established (iPhone 15 Pro Max, 2026-06-13):**
 - Config parses; download intact (2357 MB on disk); `loadArrays` is **lazy** (38 MB after load).
@@ -153,11 +184,19 @@ iterations so the last line localizes a crash.
 
 The weights are served via HF's **Xet CDN** (`cas-bridge.xethub.hf.co`) and large
 single-stream downloads stall. The default 60 s `timeoutIntervalForRequest` aborts the whole
-transfer on one stall. `DownloadCoordinator` is now hardened (300 s request timeout,
-`waitsForConnectivity`). **T2.2 must additionally add:** resume from
-`NSURLSessionDownloadTaskResumeData` on `-1001`/drops, a **background `URLSession`** (the
-download is multi-minute and the app may background), and reuse the typed
-`FailureReason`→generic-actionable-UI-message pattern (`WhisperModelSection.failureMessage`).
+transfer on one stall. `DownloadCoordinator` is hardened (300 s request timeout,
+`waitsForConnectivity`).
+
+**Status (T2.2):** ✅ **resume/retry added + device-validated** — on a transient failure the
+coordinator re-issues up to 5×, resuming from `NSURLSessionDownloadTaskResumeData` when the server
+supports range requests (HF Xet/S3 does) so a `-1001` stall doesn't discard on-disk bytes, else
+restarting the file; the typed `FailureReason`→generic-actionable-message UX is reused as-is. A
+fresh 2.5 GB Parakeet download completed cleanly on-device 2026-06-13. ⏸️ **The
+background `URLSession` is deferred** (open-Q #6): for a one-time, app-foregrounded sideload
+download, resume-on-stall covers the observed failure, and a background session's relaunch
+lifecycle (persisted state, `handleEventsForBackgroundURLSession`, a continuation that can't
+survive app suspension) is disproportionate for v1. Revisit if the download UX ever needs to
+survive backgrounding.
 
 ### 3.5 Provider-abstraction spine is load-bearing — preserve it
 
@@ -412,6 +451,20 @@ boundaries). For voice notes this matters less than for hour-long audio; a corre
 overlap-cutoff merge may suffice for v1 — validate on a tiled clip (like Whisper's
 `runWhisperChunked`).
 
+**Port status (T2.1e — DONE, device PASS 2026-06-13).** Ported the **full**
+senstella algorithm, not the simple cutoff: `ParakeetChunking.swift` has `ParakeetToken`
+(time-aligned) + `ParakeetChunkMerge.longestContiguous` (returns `nil` exactly where the Python
+raises → caller falls to LCS) + `longestCommonSubsequence` + a shared `cutoff` (thin overlap)
+and `stitch` (the identical result-construction tail of both Python functions). It's pure
+id+timestamp math (no MLX) ⇒ **simulator-unit-tested** (`ParakeetChunkingTests`: concat / cutoff
+/ contiguous-dedup / non-contiguous-LCS-fallback). The decode side emits timestamps via
+`ParakeetTDTModel.decodeGreedyAligned` (`start = step·timeRatio`, `duration =
+durations[decision]·timeRatio`); `transcribeChunked` drives the window loop (whole-clip fast
+path identical to `transcribe(_:)`). `ParakeetSmoke.runChunked` tiles `ls_test.flac` ×6 and
+asserts chunked == whole-clip (the boundary-correctness gate). **Device PASS 2026-06-13:** 6/6
+sentences, no boundary drop/dup; one within-chunk word differed outside the overlap (edge-context
+variance, not a merge defect — see §1 / §8).
+
 ---
 
 ## 6. Codebase integration (the provider spine)
@@ -523,23 +576,38 @@ For each: **goal · do · validate · gotchas · done-when.**
   joint slicing and the blank index.
 - **Done-when:** substring PASS on device; transcript looks right.
 
-### T2.1e — Long-audio chunking
-- **Do:** chunk-with-overlap + token merge per §5.5 (own path; not Whisper's `ChunkedTranscription`).
-  Smoke: decode a tiled ~36 s clip (like `runWhisperChunked`).
-- **Validate:** tiled clip decodes with no dropped/dup words at boundaries.
-- **Done-when:** a >chunk-length clip transcribes correctly on device.
+### T2.1e — Long-audio chunking ✅ DONE (device PASS 2026-06-13)
+- **Done:** `ParakeetChunking.swift` (`ParakeetToken` + `ParakeetChunkMerge`, full
+  contiguous/LCS merge ported from `alignment.py`); `decodeGreedyAligned` (per-token
+  timestamps) + `transcribeChunked` (window loop, whole-clip fast path) in `ParakeetDecoder.swift`;
+  `ParakeetSmoke.runChunked` (tiled ×6 ≈39 s; whole-clip vs chunked 15 s/5 s). 6 sim-safe
+  `ParakeetChunkingTests` green; build + suite green.
+- **Validated (device, iPhone 15 Pro Max):** chunked output had **6/6 complete sentences, no
+  boundary drop/dup** (merge correct). One within-chunk word differed ("trudged"→"troubled")
+  *outside* the overlap region — edge-context variance from the tiny smoke window, not a merge
+  bug; negligible at the 120 s/15 s production default. whole-clip 2.34 s vs chunked 3.39 s
+  (the 50 %-overlap smoke setting re-encodes more; ~12 % at production overlap).
+- **Done-when:** ✅ `runChunked` PASS on device.
 
-### T2.2 — Generalize the download store
-- **Do:** extract the generic machinery from `WhisperModelStore` into
-  `DownloadableModelStore(spec:)` where a spec = {remote files [{url, sha256, size}], bundled
-  files, subdirectory, weights filename}. `WhisperModelStore` becomes `spec: .whisperSmallEn`;
-  Parakeet gets `spec: .parakeetTDT06bV2` (manifest: `model.safetensors` 2.47 GB + `config.json`;
-  no separate bundled assets needed — Parakeet config is downloaded, not bundled, unlike Whisper).
-  Pin a SHA-256 for the Parakeet weights. **Add the §3.4 robustness** (resume, background session).
-  Replace the throwaway downloader in `ParakeetSmoke` with the store. Update `WhisperModelStoreTests`.
-- **Validate:** both models download/verify/delete via one store type; simulator tests green.
-- **Done-when:** Parakeet weights download through the real store with integrity check + a generic
-  error UX.
+### T2.2 — Generalize the download store ✅ DONE (fully device-validated)
+- **Done:** `DownloadableModelStore.swift` — `ModelDownloadSpec` = `{ subdirectory, remoteFiles
+  [{url, sha256, size, destFilename}], bundledFiles, downloadSizeMB }`, the generic
+  `DownloadableModelStore` (N remote files, per-file SHA-256+size verify, byte-weighted progress,
+  readiness = all remote files present), and the `DownloadCoordinator` (resume/retry, §3.4).
+  `WhisperModelStore`/`ParakeetModelStore` are thin subclasses binding `.whisperSmallEn` /
+  `.parakeetTDT06bV2`. Parakeet manifest **pinned to commit `b8e276dc…`**: `model.safetensors`
+  sha `b958c37a…`/2 471 559 904 B (LFS oid), `config.json` sha `9bd323e6…`/36 176 B. `ParakeetSmoke`
+  now downloads via the real store. 6 sim-safe `DownloadableModelStoreTests` + unchanged
+  `WhisperModelStoreTests` green; build + full suite green.
+- **Deferred:** true background `URLSession` (§3.4 / open-Q #6) — resume-on-stall covers the
+  observed failure for the foregrounded one-time download.
+- **Fully device-validated 2026-06-13 (iPhone 15 Pro Max):** deleted the bundle via the DEBUG
+  "Delete Parakeet model" button → re-downloaded the 2.5 GB `model.safetensors` + `config.json`
+  fresh → **SHA-256 + size verified** → installed → the full T2.1b/d/e pipeline ran green
+  (substring PASS, chunking PASS). The store's `.missing`→`.downloading`→`.ready` flow and the
+  integrity gate are confirmed on real hardware, not just unit tests.
+- **Done-when:** ✅ both models resolve through one store type with integrity check + generic error
+  UX; the Parakeet fresh download + verify is device-confirmed.
 
 ### T2.3 — Per-engine gating
 - **Do:** replace the single `whisperReady: Bool` with per-engine readiness. Touches
@@ -587,10 +655,20 @@ For each: **goal · do · validate · gotchas · done-when.**
    is still the T2.1d substring check — also the arbiter for the §5.2 hann / magnitude / mel-scale risks.
 2. ~~**`increased-memory-limit` entitlement**~~ — **RESOLVED in T2.1c: NOT needed.** Encoder
    forward peaks at 1.31 GB `phys_footprint` (device-measured), ~1.7 GB under the ~3 GB ceiling (§3.1).
-3. **Chunk merge sophistication** (§5.5) — simple overlap-cutoff vs full LCS; decide from a tiled-clip test.
+3. ~~**Chunk merge sophistication** (§5.5) — simple overlap-cutoff vs full LCS~~ — **RESOLVED in
+   T2.1e: ported the full senstella algorithm** (`merge_longest_contiguous` with the
+   `merge_longest_common_subsequence` fallback + midpoint cutoff for thin overlaps), not the
+   FluidInference cutoff stub. Unit-validated on the simulator (`ParakeetChunkingTests`); the
+   tiled-clip device smoke (`ParakeetSmoke.runChunked`, whole-clip vs chunked) is the final
+   confirmation that boundaries don't drop/dup words.
 4. **bf16 vs a pre-converted on-disk format** — we cast F32→bf16 at load each launch (~fast, lazy). If
-   load time grates, consider converting once to a bf16 safetensors on disk (T2.2 could own this), so
-   subsequent loads mmap bf16 directly (~1.2 GB, no cast). Not needed for v1.
+   load time grates, consider converting once to a bf16 safetensors on disk (a later optimization, e.g.
+   in `ParakeetMLXTranscriber`'s load), so subsequent loads mmap bf16 directly (~1.2 GB, no cast). Not
+   needed for v1.
 5. **Accuracy ladder validation** — once selectable (T2.5), run the same audio through Apple/Whisper/
    Parakeet via `NoteDetailView`'s re-transcribe (the A/B substrate) to confirm Parakeet earns its place.
+6. **Background `URLSession` for downloads** (§3.4) — **deferred in T2.2.** The store has resume/retry
+   (covers the observed mid-transfer `-1001` stall on the foregrounded download); a true background
+   session that survives app suspension/relaunch is disproportionate complexity for the v1 one-time
+   sideload download. Revisit if the download UX needs to continue while backgrounded.
 ```

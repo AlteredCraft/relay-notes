@@ -1,46 +1,51 @@
 import OSLog
 import SwiftUI
 
-/// Settings section that drives the on-device Whisper model lifecycle by
-/// observing `WhisperModelStore.status`:
+/// Settings section that drives the on-device Parakeet model lifecycle by
+/// observing `ParakeetModelStore.status` (T2.5) — the real replacement for the
+/// throwaway DEBUG "Delete Parakeet model" button. Mirrors `WhisperModelSection`:
 ///   - `.missing`     → download button (with size hint)
 ///   - `.downloading` → progress bar + cancel
 ///   - `.ready`       → "Installed" + delete
 ///   - `.failed`      → generic actionable message + retry
 ///
 /// The download runs in an **unstructured** `Task` (not `.task`) so it survives
-/// the Settings sheet being dismissed — the store outlives the sheet and the
-/// user can reopen Settings to see live progress. Status is the single source
-/// of truth, so the thrown error from `download()` is logged (full detail) and
-/// otherwise discarded; the UI re-renders off the store's `.failed(reason:)`.
-struct WhisperModelSection: View {
-    let store: WhisperModelStore
+/// the Settings sheet being dismissed — the store outlives the sheet and the user
+/// can reopen Settings to see live progress. Status is the single source of truth,
+/// so the thrown error from `download()` is logged (full detail) and otherwise
+/// discarded; the UI re-renders off the store's `.failed(reason:)`.
+///
+/// Parakeet's bundle is ~2.4 GB (vs Whisper's ~480 MB), so the copy differs; the
+/// download/progress/delete/failure machinery is otherwise identical (the failure
+/// mapping is the shared `DownloadableModelStore.userFacingMessage`).
+struct ParakeetModelSection: View {
+    let store: ParakeetModelStore
 
-    /// Fired after a successful delete so the caller can re-establish the
-    /// engine ↔ model-presence invariant (a deleted model can no longer back a
-    /// `.whisperMLX` engine selection). Defaults to a no-op for previews.
+    /// Fired after a successful delete so the caller can re-establish the engine ↔
+    /// model-presence invariant (a deleted model can no longer back a
+    /// `.parakeetMLX` engine selection). Defaults to a no-op for previews.
     var onDeleted: () -> Void = {}
 
     @State private var showDeleteConfirmation = false
 
     private static let logger = Logger(
         subsystem: "alteredcraft.Relay-Notes",
-        category: "WhisperModelStore"
+        category: "ParakeetModelStore"
     )
 
     var body: some View {
         Section {
             content
         } header: {
-            Text("On-device model")
+            Text("On-device model (Parakeet)")
         } footer: {
-            Text("Whisper transcribes fully on-device. The model is about 480 MB and downloads once — delete it anytime to reclaim the space.")
+            Text("Parakeet transcribes fully on-device. The model is about 2.4 GB and downloads once — delete it anytime to reclaim the space.")
         }
-        .alert("Delete the on-device model?", isPresented: $showDeleteConfirmation) {
+        .alert("Delete the Parakeet model?", isPresented: $showDeleteConfirmation) {
             Button("Delete", role: .destructive) { delete() }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("You'll need to download it again (about 480 MB) to use on-device Whisper.")
+            Text("You'll need to download it again (about 2.4 GB) to use on-device Parakeet.")
         }
     }
 
@@ -48,7 +53,7 @@ struct WhisperModelSection: View {
     private var content: some View {
         switch store.status {
         case .missing:
-            Button("Download model (≈480 MB)") { startDownload() }
+            Button("Download model (≈2.4 GB)") { startDownload() }
 
         case let .downloading(progress):
             VStack(alignment: .leading, spacing: 10) {
@@ -69,7 +74,7 @@ struct WhisperModelSection: View {
 
         case let .failed(reason):
             VStack(alignment: .leading, spacing: 10) {
-                Text(Self.failureMessage(for: reason))
+                Text(DownloadableModelStore.userFacingMessage(for: reason))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Button("Try again") { startDownload() }
@@ -82,9 +87,9 @@ struct WhisperModelSection: View {
             do {
                 try await store.download()
             } catch {
-                // Status already reflects `.failed(reason:)` for the UI; the
-                // full error is for debugging only and never shown to the user.
-                Self.logger.error("Whisper model download failed: \(String(describing: error), privacy: .public)")
+                // Status already reflects `.failed(reason:)` for the UI; the full
+                // error is for debugging only and never shown to the user.
+                Self.logger.error("Parakeet model download failed: \(String(describing: error), privacy: .public)")
             }
         }
     }
@@ -94,13 +99,7 @@ struct WhisperModelSection: View {
             try store.delete()
             onDeleted()
         } catch {
-            Self.logger.error("Whisper model delete failed: \(String(describing: error), privacy: .public)")
+            Self.logger.error("Parakeet model delete failed: \(String(describing: error), privacy: .public)")
         }
-    }
-
-    /// Generic, actionable user copy — forwards to the shared mapping (the same
-    /// one the Parakeet section uses), which drops the diagnostic detail.
-    static func failureMessage(for reason: DownloadableModelStore.FailureReason) -> String {
-        DownloadableModelStore.userFacingMessage(for: reason)
     }
 }

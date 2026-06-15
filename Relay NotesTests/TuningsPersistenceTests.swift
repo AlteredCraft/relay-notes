@@ -45,6 +45,21 @@ struct TuningsPersistenceTests {
         } else {
             Issue.record("Expected .whisperMLX options when engine is .whisperMLX")
         }
+
+        tunings.engine = .parakeetMLX
+        if case .parakeetMLX = tunings.transcriptionOptions {
+        } else {
+            Issue.record("Expected .parakeetMLX options when engine is .parakeetMLX")
+        }
+    }
+
+    @Test func parakeetEngineRoundTripsThroughUserDefaults() {
+        let defaults = makeDefaults()
+        let writer = Tunings(defaults: defaults)
+        writer.engine = .parakeetMLX
+
+        let reader = Tunings(defaults: defaults)
+        #expect(reader.engine == .parakeetMLX)
     }
 
     @Test func resetToDefaultsRestoresApple() {
@@ -63,7 +78,8 @@ struct TuningsPersistenceTests {
         let tunings = Tunings(defaults: makeDefaults())
         tunings.engine = .whisperMLX
 
-        tunings.reconcileEngineAvailability(whisperReady: false)
+        // Whisper absent from the ready set (only Apple, which has no model).
+        tunings.reconcileEngineAvailability(readyEngines: [.apple])
 
         #expect(tunings.engine == .apple)
     }
@@ -72,7 +88,7 @@ struct TuningsPersistenceTests {
         let tunings = Tunings(defaults: makeDefaults())
         tunings.engine = .whisperMLX
 
-        tunings.reconcileEngineAvailability(whisperReady: true)
+        tunings.reconcileEngineAvailability(readyEngines: [.apple, .whisperMLX])
 
         #expect(tunings.engine == .whisperMLX)
     }
@@ -81,7 +97,7 @@ struct TuningsPersistenceTests {
         let tunings = Tunings(defaults: makeDefaults())
         tunings.engine = .apple
 
-        tunings.reconcileEngineAvailability(whisperReady: false)
+        tunings.reconcileEngineAvailability(readyEngines: [.apple])
 
         #expect(tunings.engine == .apple)
     }
@@ -164,6 +180,7 @@ struct TuningsPersistenceTests {
 
         #expect(tunings.apple == AppleSpeechSettings())
         #expect(tunings.whisper == WhisperSettings())
+        #expect(tunings.parakeet == ParakeetSettings())
         #expect(tunings.engine == .apple)
     }
 }

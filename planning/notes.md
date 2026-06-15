@@ -1,7 +1,7 @@
 ---
 title: Relay Notes - Voice-to-Text iOS Build Plan
 date: 2026-06-07
-updated: 2026-06-12
+updated: 2026-06-14
 tags:
   - altered-craft
   - product
@@ -21,31 +21,33 @@ created_by: deep-research
 
 iOS-native (SwiftUI), iPhone 15 Pro Max first. Cross-platform and any paid product are explicitly deferred.
 
-This doc is the **plan and the why**. The chronological "what shipped" narrative lives in [CHANGE_LOG.md](../CHANGE_LOG.md); transcription dial rationale lives in [transcription-tuning.md](./transcription-tuning.md). Bulky reference material (the deferred LLM research, the empirical tuning log) is in the [Appendix](#appendix) and linked from the body.
+This doc is the **plan and the why**. The chronological "what shipped" narrative lives in [CHANGE_LOG.md](../CHANGE_LOG.md); transcription dial rationale lives in [transcription-tuning.md](./transcription-tuning.md). Bulky reference material (the cleanup-model research, the empirical tuning log) is in the [Appendix](#appendix) and linked from the body.
 
-> [!important] v1 scope: voice-to-text only
-> Tap, speak, get a stored transcript. That is the whole product for v1. Cleanup, organization, categorization, and any local-LLM enrichment are **deferred** to the "Later — LLM enrichment" stages, for when v1 is in daily use and the real shape of "messy notes" is observable.
+> [!important] Current POV (2026-06-14): transcription is done — the cleanup model is next
+> v1 voice-to-text is built and on-device. **Apple Speech is the permanent default** — it works the instant the app is installed (no model download) and iOS 27 promises a stronger on-device recognizer. Whisper and Parakeet stay as opt-in on-device upgrades, but the default is settled, not pending an A/B.
+> **The next bet: stop chasing raw transcription accuracy; mitigate it with an on-device cleanup model.** A messy Apple-Speech transcript cleaned by a local LLM should beat a marginally-more-accurate raw transcript — and it unlocks much more (de-filler, structure, categorize). This is a **hypothesis to test next** (L1/L2), not a settled fact. Prior art: **Google AI Edge Eloquent** ships exactly this shape (on-device Gemma ASR + on-device LLM cleanup, optional cloud Gemini for stronger cleanup) and it works well — see [References](#references).
 
-> [!info] Three constraints that shape v1
+> [!info] Three constraints that shape the build
 > 1. **Local-first by default. Cloud is opt-in.** The app must be fully functional with no network. Cloud STT and cloud LLM enrichment are *upgrades*, not requirements. Default flow: mic → on-device transcribe → on-device store.
-> 2. **On-device ≠ Apple-only.** Apple Speech is the easiest on-device start because it ships with iOS, but third-party local models (Whisper, Qwen3-ASR via MLX) are *also* on-device and stay in scope as the upgrade path when Apple's models hit a ceiling. "Where it runs" (on-device vs cloud) and "whose model" (Apple's vs your-choice) are independent axes.
+> 2. **On-device ≠ Apple-only.** Apple Speech is the **locked default** because it ships with iOS (zero setup), but third-party local models (Whisper, Parakeet via MLX) are *also* on-device — opt-in upgrades, not the default. "Where it runs" (on-device vs cloud) and "whose model" (Apple's vs your-choice) are independent axes.
 > 3. **First and foremost it works for me.** v1 ships to my own phone via Developer Mode sideload (free Apple ID tier). TestFlight, the paid Apple Developer Program, App Store, and pricing are later, optional concerns — each tied to a concrete trigger, not a date.
 
 > [!tip] The load-bearing principle
-> **Provider abstraction from day one.** Every external capability sits behind a protocol so the runtime provider is swappable without a rebuild — `Transcriber` today, `LanguageModel` when the LLM stages resume. "Which provider" is a runtime choice. This is the spine; preserve it.
+> **Provider abstraction from day one.** Every external capability sits behind a protocol so the runtime provider is swappable without a rebuild — `Transcriber` today, `LanguageModel` for the cleanup model next. "Which provider" is a runtime choice. This is the spine; preserve it.
 
 ---
 
-## Where we are now (2026-06-12)
+## Where we are now (2026-06-14)
 
-v1 voice-to-text is **built and on-device**. Tap → speak → stored transcript works, with two interchangeable on-device engines selectable in Settings:
+v1 voice-to-text is **built and on-device**. Tap → speak → stored transcript works, with three interchangeable on-device engines selectable in Settings:
 
-- **Apple Speech** (default) — `SpeechAnalyzer` + `SpeechTranscriber`, streams live partials while recording.
-- **On-device Whisper** — `whisper-small.en` (481 MB FP16) via raw `mlx-swift`, downloaded on first use into Application Support, finalize-only decode (no live partials — placeholder UX while recording).
+- **Apple Speech** (**permanent default**) — `SpeechAnalyzer` + `SpeechTranscriber`, streams live partials while recording; works the instant the app is installed, no model download. iOS 27 promises a stronger on-device recognizer.
+- **On-device Whisper** — `whisper-small.en` (481 MB FP16) via raw `mlx-swift`, downloaded on first use into Application Support, finalize-only decode (no live partials — placeholder UX while recording). Opt-in upgrade.
+- **On-device Parakeet** — NVIDIA `parakeet-tdt-0.6b-v2` (FastConformer + TDT, ~2.4 GB downloaded) via raw `mlx-swift`, also finalize-only (T2, device-validated 2026-06-14). Opt-in upgrade. Published WER puts it above Whisper, though the field read was closer — see [Appendix B](#b-v11-accuracy-tuning-empirical-log).
 
-Daily-driver UX shipped: chronological list, detail view with audio playback, delete (row + audio file), search, optional title, share. The provider spine is in place and load-bearing: `Transcriber` (file + streaming), `TranscriptionEngine` + `TranscriberFactory`, the `TranscriptionOptions` sum type, and per-engine settings bundles (Approach C). Persistence is SwiftData (`Note`) + audio files referenced by filename. Verified by 84 simulator tests (MLX paths are device-only) plus device validation on the iPhone 15 Pro Max.
+Daily-driver UX shipped: chronological list, detail view with audio playback, delete (row + audio file), search, optional title, share. The provider spine is in place and load-bearing: `Transcriber` (file + streaming), `TranscriptionEngine` + `TranscriberFactory` (with single-live-MLX-engine eviction so Whisper/Parakeet are never co-resident), the `TranscriptionOptions` sum type, per-engine settings bundles (Approach C), and the `ModelStores` registry that gates each engine on its model's presence. Persistence is SwiftData (`Note`) + audio files referenced by filename. Verified by 149 simulator tests (MLX paths are device-only) plus device validation on the iPhone 15 Pro Max.
 
-**Next:** dogfood via sideload (V1.3) — T1.3 measurements are captured ([Appendix C](#c-t1-measurements--whisper-smallen-on-device-t13): ~4× realtime, memory bounded, `small.en` retained). LLM enrichment (L1–L5) stays deferred until v1 is in daily use.
+**Next — the cleanup model (L1/L2).** The strategic bet: rather than chase a better transcriber, mitigate transcription errors with an on-device LLM cleanup pass. v1 keeps dogfooding via sideload (V1.3) in parallel ([Appendix C](#c-t1-measurements--whisper-smallen-on-device-t13) has the Whisper on-device cost numbers). The old "accuracy-ladder A/B to pick the default engine" is **retired** — Apple Speech is the permanent default, and accuracy now comes from cleanup, not from swapping transcribers. (Field read after T2, qualitative single-observer: Apple fastest / least accurate but usable; Parakeet a bit faster than Whisper; Whisper a bit more accurate — all three usable, none worth dethroning Apple.)
 
 ---
 
@@ -62,13 +64,13 @@ graph LR
     C2 --> D
     C3 --> D
     D --> F[Local store]
-    F -.later, local-first.-> G1[Local LLM cleanup<br/>MLX: Qwen / Gemma / Llama]
-    F -.later, opt-in.-> G2[Cloud LLM cleanup<br/>Claude / Gemini]
+    F -->|next, local-first| G1[Local LLM cleanup<br/>MLX: Qwen / Gemma / Llama]
+    F -.opt-in.-> G2[Cloud LLM cleanup<br/>Claude / Gemini]
     G1 --> H[Cleaned / categorized note]
     G2 --> H
 ```
 
-**v1 is the solid path:** mic → persist → transcribe → store. The cloud branch (`C3`) is opt-in and off by default. The dotted "Later" stage repeats the same local-first / opt-in-cloud pattern for LLM enrichment — Apple Foundation Models are intentionally *not* a primary engine (the open-source ecosystem leads on capability in 2026).
+**v1 is the solid path:** mic → persist → transcribe → store. The cloud STT branch (`C3`) is opt-in, off by default, and now deprioritized behind cleanup. **The cleanup stage (`G1`) is the active next phase** — same local-first / opt-in-cloud pattern: local MLX cleanup as the default, cloud (`G2`) opt-in. Apple Foundation Models are intentionally *not* the primary cleanup engine (the open-source ecosystem leads on capability in 2026).
 
 ---
 
@@ -94,11 +96,11 @@ enum TranscriptionOptions: Sendable {
 - `TranscriptionOptions` is a **sum type**, not a struct with nullable fields — each engine's options stay type-safe and it mirrors `TranscriptionEngine`. Per-engine settings live in bundles on `Tunings` (Approach C, see transcription-tuning.md).
 
 Providers (interchangeable behind the protocol):
-- **`AppleSpeechTranscriber`** — on-device, Apple's models. v1 default.
+- **`AppleSpeechTranscriber`** — on-device, Apple's models. **Permanent default** (zero-setup; iOS 27 strengthens it).
 - **`WhisperMLXTranscriber`** — on-device, your-choice model via raw `mlx-swift`. The upgrade when Apple's accuracy is the bottleneck and staying local matters.
 - **`CloudTranscriber`** — cloud, opt-in only (Cohere / Gemini). Off by default. *(T3, not built.)*
 
-### Later — `LanguageModel`
+### Next — `LanguageModel` (the cleanup model)
 
 ```swift
 protocol LanguageModel {
@@ -107,7 +109,7 @@ protocol LanguageModel {
 }
 ```
 
-Same local-first / cloud-opt-in pattern: **`LocalModel`** (MLX primary, llama.cpp fallback, LiteRT-LM as a third) is the default cleanup path; **`CloudModel`** (Claude / Gemini) is opt-in; **`AppleFoundation`** is an optional fourth, *not* the default (see [Appendix A](#a-llm-enrichment--engine--model-research-deferred)). Centralize the prompt and pin a fixed category taxonomy so swapping providers never changes behavior — the model picks from `allowed`, it never invents categories.
+Same local-first / cloud-opt-in pattern: **`LocalModel`** (MLX primary, llama.cpp fallback, LiteRT-LM as a third) is the default cleanup path; **`CloudModel`** (Claude / Gemini) is opt-in; **`AppleFoundation`** is an optional fourth, *not* the default (see [Appendix A](#a-the-cleanup-model--engine--model-research)). Centralize the prompt and pin a fixed category taxonomy so swapping providers never changes behavior — the model picks from `allowed`, it never invents categories.
 
 ---
 
@@ -131,17 +133,16 @@ Promoted ahead of L1 on 2026-06-10: **third-party-model on-device viability is t
 
 - [x] **T1.0–T1.2 — Local Whisper wired end-to-end, device-validated.** Provider plumbing (sum type, `TranscriberFactory`) → `WhisperModelStore` (download / integrity / delete) → cached `actor` transcriber → chunked timestamp-guided decode (handles >30 s audio) → finalize-only streaming session → Settings download/delete UI + engine gating → recorder placeholder UX. Weights are download-only (`.app` ~74 MB). Device-validated on the iPhone 15 Pro Max through 2026-06-12. Per-substage detail in CHANGE_LOG; dial/port rationale in transcription-tuning.md.
 - [x] **T1.3 — Validation + measurements + decisions log.** *(2026-06-13)* On-device smoke (`MLXSmoke`) asserts the bundled WAV decodes to the expected substring (PASS), then measures 1-min/5-min decode on the iPhone 15 Pro Max. Headline: ~4× realtime (5-min note ≈ 80 s decode), memory bounded + flat across length (~2.8 GB footprint, mostly reclaimable MLX cache; ~464 MB live). Full numbers in [Appendix C](#c-t1-measurements--whisper-smallen-on-device-t13); Decisions-log row in transcription-tuning.md. **`small.en` retained** as default — numbers don't demand a smaller variant. Battery delta deferred (can't measure cleanly while tethered/charging).
-- [ ] **T2 — Second on-device engine (in progress).** **NVIDIA Parakeet `tdt-0.6b-v2` via raw `mlx-swift`** (FastConformer encoder + TDT/RNN-T decoder, 617M params, CC-BY-4.0, `mlx-community/parakeet-tdt-0.6b-v2`) — chosen over Qwen3-ASR (best English WER of the candidates, a complete MIT mlx-swift reference port already exists, all required ops native in mlx-swift, weights load straight from safetensors). Ported from `FluidInference/swift-parakeet-mlx`, cross-checked against the Python `senstella/parakeet-mlx`. Validates runtime-extensibility on a smaller problem than an LLM and gives an English accuracy ladder above `whisper-small.en`. Staged: T2.1a–e (model port) → T2.2 (generalize the download store) → T2.3 (per-engine gating) → T2.4 (single-live-MLX-engine eviction) → T2.5 (wire end-to-end). **T2.1a done — device-validated 2026-06-13:** bf16 resident floor **~1.2 GB**, fits the 8 GB device **without** the `increased-memory-limit` entitlement — *provided* weights are cast-and-released incrementally (the reference's load-then-cast-all path holds F32 + bf16 ≈ 3.7 GB and OOMs at the ~3 GB ceiling). So the entitlement is now gated on the **forward-pass activation peak** (T2.1c), not the weights; ~1.8 GB headroom over the floor suggests it *may* fit without — TBD.
-  *Done when: a second on-device engine is selectable and produces transcripts on the phone.*
-- [ ] **T3 — Cloud STT (`CloudTranscriber`).** Cohere as accuracy primary, Gemini for diarization-heavy clips. **Off by default**, explicit opt-in with a one-time data-leaves-the-device disclosure.
+- [x] **T2 — Second on-device engine (done; device-validated 2026-06-14).** **NVIDIA Parakeet `tdt-0.6b-v2` via raw `mlx-swift`** (FastConformer encoder + TDT/RNN-T decoder, 617M params, CC-BY-4.0, `mlx-community/parakeet-tdt-0.6b-v2`) — chosen over Qwen3-ASR (best English WER of the candidates, a complete MIT mlx-swift reference port already exists, all required ops native in mlx-swift, weights load straight from safetensors). Ported from `FluidInference/swift-parakeet-mlx`, cross-checked against the Python `senstella/parakeet-mlx`. Validates runtime-extensibility on a smaller problem than an LLM and gives an English accuracy ladder above `whisper-small.en`. Staged + shipped: T2.1a–e (model port) → T2.2 (generalize the download store → `DownloadableModelStore(spec:)`) → T2.3 (per-engine gating via the `ModelStores` registry) → T2.4 (single-live-MLX-engine eviction) → T2.5 (wire end-to-end behind the provider spine). **Memory (device-measured):** bf16 resident floor **~1.28 GB**, full-model forward peak **~1.34 GB** — fits the 8 GB device **without** the `increased-memory-limit` entitlement, *provided* weights are cast-and-released incrementally (the reference's load-then-cast-all path holds F32 + bf16 ≈ 3.7 GB and OOMs at the ~3 GB ceiling). The featurizer settled to preemph 0.97 / periodic Hann / **L1** magnitude / Slaney mel scale; `ls_test.flac` decodes word-perfect. Parakeet is now selectable in Settings, records, and is a re-transcribe target on the iPhone 15 Pro Max. Detail in `CHANGE_LOG.md` (2026-06-13/14) and `planning/plan.T2.md`. *Done when: a second on-device engine is selectable and produces transcripts on the phone — ✅.*
+- [ ] **T3 — Cloud STT (`CloudTranscriber`).** Cohere as accuracy primary, Gemini for diarization-heavy clips. **Off by default**, explicit opt-in with a one-time data-leaves-the-device disclosure. **Deprioritized 2026-06-14** — behind the cleanup model; cloud STT accuracy matters less if local cleanup mitigates STT errors.
   *Done when: with the toggle on, a transcript comes back from a remote provider; with it off, no network call leaves the device.*
 
-### Later — LLM enrichment (deferred until v1 is in daily use)
+### Next — the cleanup model (LLM enrichment)
 
-Extends the same provider pattern to `LanguageModel`. Engine/model research detail is in [Appendix A](#a-llm-enrichment--engine--model-research-deferred).
+**Promoted to the active next phase (2026-06-14)** — ahead of T3. The bet: an on-device LLM cleanup pass mitigates transcription errors, so accuracy comes from cleanup rather than from chasing a better transcriber. Extends the same provider pattern to `LanguageModel`. Engine/model research is in [Appendix A](#a-the-cleanup-model--engine--model-research); prior art is Google AI Edge Eloquent ([References](#references)).
 
-- [ ] **L1 — Inference spike.** Wire `mlx-swift` (or `LocalLLMClient`), download a model from HF, generate on the 15 Pro Max, add the increased-memory-limit entitlement. Measure tok/sec, load, memory, battery. *Riskiest integration — prove it first when L stages resume.*
-- [ ] **L2 — Cleanup pass.** Local model behind `LanguageModel`; messy spoken note in, clean note out. Model stays swappable.
+- [ ] **L1 — Inference spike.** Wire on-device LLM generation via **`mlx-swift-examples` (`MLXLLM`/`MLXLMCommon`)** — its model factory covers many LLM arches + HF download + chat templates, so this is an SPM-dep + API call, **not** a hand-port (unlike Whisper/Parakeet). (`LocalLLMClient` or raw `mlx-swift` are fallbacks.) Download a model from HF — primary **Gemma 4 E2B** (proven for this task in Edge Eloquent), **Qwen 3.5 4B** the fallback — generate on the 15 Pro Max, add the `increased-memory-limit` entitlement. Measure tok/sec, load, memory, battery. **Gating check:** Gemma 4 is new — confirm `mlx-swift-examples` implements its arch (Eloquent runs Gemma on LiteRT, not MLX), else fall back to Qwen 3.5 4B. *Riskiest integration — prove it first; L2's harness builds directly on it.*
+- [ ] **L2 — Cleanup pass + the core test.** Local model behind `LanguageModel`; messy spoken note in, clean note out (de-filler, fix run-ons, light structure). **Deliverable: a device-only `LLMCleanupSmoke`** (mirrors `MLXSmoke`/`ParakeetSmoke`) — fixed real Apple-Speech transcripts × candidate **MLX** models, runs the centralized cleanup prompt, prints before/after + tok/s + peak footprint. **Apples-to-apples** (real device + shipping runtime + deployable quant), so results transfer — unlike Ollama-on-Mac (different runtime/quant/hardware; a quality smell-test only). Ceiling-check the same fixtures against a cloud model. **The validation that justifies the pivot:** does on-device cleanup mitigate STT errors enough that raw-transcriber accuracy stops mattering? Full plan + handoff: [`plan.L2.md`](./plan.L2.md). (Gemma-via-LiteRT is the separate [#10](https://github.com/AlteredCraft/relay-notes/issues/10) track.)
 - [ ] **L3 — Categorize / organize.** Pinned taxonomy. Local or cloud.
 - [ ] **L4 — Cloud enrichment.** `CloudModel` + an offline queue that drains on reconnect; cloud STT accuracy pass.
 - [ ] **L5 — Optional.** Apple Foundation Models provider, LiteRT-LM (Gemma 4 E2B), or a LoRA fine-tune via MLX.
@@ -152,13 +153,11 @@ Extends the same provider pattern to `LanguageModel`. Engine/model research deta
 
 ### v1
 
-- **Local-first by default; cloud is opt-in.** Fully functional with no network. Cloud STT is an upgrade users explicitly enable; it never runs implicitly.
-- **On-device ≠ Apple-only.** `AppleSpeechTranscriber` ships first because it's built into iOS, but `WhisperMLXTranscriber` is also on-device and slots in behind the same protocol when Apple's accuracy is the limit.
-- **Provider abstraction from day one.** `Transcriber` with concrete providers; `TranscriptionEngine` + `TranscriberFactory` resolve the engine per recording; `TranscriptionOptions` is a sum type so per-engine options stay type-safe. (All shipped — see "The spine.")
-- **Transcription off the main thread.** Capture and transcription run async; the view never blocks. Apple streams partials into the view; Whisper decodes once at finalize.
+- **Principles** — local-first / cloud-opt-in, on-device-≠-Apple-only, provider abstraction — are the intro callouts + "The spine" (all shipped); not repeated here.
+- **Transcription off the main thread.** Capture and transcription run async; the view never blocks. Apple streams partials into the view; the MLX engines decode once at finalize.
 - **Local-first persistence.** SwiftData for transcripts; audio files in the container, referenced by **filename** (not absolute URL — the container path can shift between launches). `Note.deleteWithAudio(in:)` is the canonical delete.
 
-### Later (LLM enrichment)
+### Next (the cleanup model)
 
 - **Local-first by default; cloud is opt-in.** Same as transcription. Local LLM (MLX) is the default cleanup path; cloud is an explicit upgrade.
 - **Engine abstraction from day one of the L stages.** MLX primary, llama.cpp fallback, LiteRT-LM third, Apple Foundation optional fourth — all behind `LanguageModel`. Models land as MLX / GGUF / LiteRT at different times; multi-engine covers all.
@@ -183,28 +182,29 @@ Extends the same provider pattern to `LanguageModel`. Engine/model research deta
 > - **iOS memory limits.** Even with the entitlement, 8 GB is tight — 3–4B Q4 is the ceiling. Test for jetsam kills under real use.
 > - **`LocalLLMClient` is experimental.** Keep the roll-your-own path (mlx-swift + llama.cpp xcframework) as a fallback if it churns.
 > - **Format availability lag (MLX / GGUF / LiteRT-LM).** Engine abstraction is what makes a new model in one format a non-issue.
-> - **First-load latency + licensing.** First run compiles/loads — show progress. Re-check the model license if this ever becomes paid (Qwen / Gemma E2B are Apache 2.0).
+> - **First-load latency + licensing.** First run compiles/loads — show progress. Re-check the model license if this ever becomes paid (Gemma 4 E2B / Qwen 3.5 are Apache 2.0 per their cards — verify per model).
 
 ---
 
 ## References
 
 - **Brown CCV — Comparing speech-to-text models:** https://docs.ccv.brown.edu/ai-tools/services/transcribe/comparing-speech-to-text-models — Cohere Transcribe (5.42% WER, best published), Qwen3-ASR (5.76%, faster than Whisper), Whisper (7.44%), Gemini (strong diarization). Backs the v1 cloud-STT plan: Cohere for accuracy, Gemini for diarization.
-- **Gemma 4 E2B (LiteRT-LM):** https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm — Google's on-device LM (~2.6 GB, Apache 2.0), LiteRT-LM runtime, official iOS support. A row in L5.
+- **Gemma 4 E2B (LiteRT-LM):** https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm — Google's on-device LM (~2.5 GB full / ~0.8 GB text-only, Apache 2.0), LiteRT-LM runtime, official iOS support. A row in L5; evaluated in [issue #10](https://github.com/AlteredCraft/relay-notes/issues/10).
+- **Google AI Edge Eloquent (prior art for the cleanup model):** https://apps.apple.com/us/app/google-ai-edge-eloquent/id6756505519 — Google's offline-first iOS dictation app (launched ~2026-04). On-device **Gemma-based ASR + on-device LLM cleanup** (strips fillers, rewrites for intent vs verbatim), optional **cloud Gemini** for stronger cleanup, transform modes (Key points / Formal / Short / Long), Gmail-sourced custom dictionary. Direct validation of Relay Notes' next bet — local capture + local cleanup, cloud as an opt-in upgrade — and the bar to measure against.
 
 ---
 
 ## Content angle
 
-Every phase is an AlteredCraft post. **v1:** local-first design on iOS in 2026, the Apple Speech on-device floor, `SpeechAnalyzer`/`SpeechTranscriber` in SwiftUI for a TypeScript developer, runtime accuracy tuning as a debug surface, file-based vs live-streaming STT, on-device-but-not-Apple (Whisper via MLX), the STT model landscape. **Later:** MLX vs llama.cpp vs LiteRT-LM on a real iPhone, runtime model swapping from HF, the local-capture-cloud-enrich pattern. *The build funds the content.*
+Every phase is an AlteredCraft post. **v1:** local-first design on iOS in 2026, the Apple Speech on-device floor, `SpeechAnalyzer`/`SpeechTranscriber` in SwiftUI for a TypeScript developer, runtime accuracy tuning as a debug surface, file-based vs live-streaming STT, on-device-but-not-Apple (Whisper via MLX), the STT model landscape. **Later:** MLX vs llama.cpp vs LiteRT-LM on a real iPhone, runtime model swapping from HF, the local-capture-cloud-enrich pattern, building a local cleanup model (and how it stacks up against Google AI Edge Eloquent). *The build funds the content.*
 
 ---
 
 # Appendix
 
-## A. LLM enrichment — engine + model research (deferred)
+## A. The cleanup model — engine + model research
 
-The original "local-LLM-on-device" thesis. Preserved because the research is still good — just not v1. Revisit once v1 is in daily use and there are real captured notes to validate against.
+The local-LLM-on-device research backing the cleanup phase — **now the active next work** (see roadmap). Still current; validate against the real captured notes that dogfooding (V1.3) is producing.
 
 **Inference engine.** For "my choice of local model" on Apple silicon the 2026 consensus is **MLX primary, llama.cpp fallback**, with **LiteRT-LM** (Google's on-device runtime, ships Gemma 4 E2B with official iOS support) as a third to compare.
 
@@ -216,7 +216,7 @@ The original "local-LLM-on-device" thesis. Preserved because the research is sti
 - **Runtime download from HF**, not bundled — the model picker is just a list of repo ids; a better model drops, you add an id, no app update. Optionally bundle one small default for first-run offline.
 - **Ready-made:** `LocalLLMClient` (tattn, MIT) wraps GGUF + MLX with streaming + HF download (experimental). Alternative: a thin protocol over `mlx-swift` + a vendored `llama.cpp` xcframework.
 
-**Models for the iPhone 15 Pro Max (8 GB).** Sweet spot is 3–4B at 4-bit (~2.5 GB, snappy). Default pick **Qwen3 4B** (Apache 2.0); alternatives Gemma 3 4B / Llama 3.2 3B / Phi-4-mini; step down to 1–2B if memory pressure shows up. Add the increased-memory-limit entitlement and test for jetsam under real use.
+**Models for the iPhone 15 Pro Max (8 GB).** Sweet spot is 2–4B at 4-bit (~2.5 GB, snappy). Primary **Gemma 4 E2B** (edge-built, Apache 2.0, the family proven for cleanup in Edge Eloquent); fallback **Qwen 3.5 4B** (newer-gen, dense, well-supported in MLX). Add the increased-memory-limit entitlement and test for jetsam under real use. (MoE models like Gemma 4 26B-A4B don't fit — all experts must be resident, so *total* params gate the phone, not *active*.)
 
 **Cleanup / categorize tiers** (sequencing within the Later work):
 
@@ -233,7 +233,7 @@ The original "local-LLM-on-device" thesis. Preserved because the research is sti
 | Tier | Provider | Where | Model choice | When |
 |---|---|---|---|---|
 | 1 | Apple Speech (`SpeechAnalyzer`) | on-device | none (Apple's) | v1 ✅ |
-| 2 | Local ASR via MLX (Whisper; Parakeet/Qwen3-ASR follow-ups) | on-device | your choice (HF repo id) | T1 ✅ (Whisper) |
+| 2 | Local ASR via MLX (Whisper + Parakeet; Qwen3-ASR a sanity-check only) | on-device | your choice (HF repo id) | T1 ✅ (Whisper) · T2 ✅ (Parakeet) |
 | 3 | Cloud STT (Cohere / Gemini) | cloud (opt-in) | provider's hosted | T3 — off by default |
 
 ## B. V1.1 accuracy-tuning empirical log
@@ -249,9 +249,10 @@ Per-knob outcomes observed when turning the Apple-Speech dials. *What each dial 
 
 Notes: mode + bitrate are cheap capture/storage knobs; preset + biasing are Apple-Speech-only recognizer knobs (inert under Whisper). Tuning state persists via `UserDefaults` (per-property `didSet`; `init` reads back). Engine-scope detail in transcription-tuning.md § "Engine relevance."
 
-### Engine comparison — Apple Speech vs Whisper (field trials)
+### Engine comparison — Apple vs Whisper vs Parakeet (field trials)
 
 - **2026-06-12** — Field-trial impression: Apple Speech is performing at least as well as Whisper (`small.en`), possibly better. Qualitative, single-observer, real-use dictation — not a measured WER on a fixed corpus. Worth noting because Apple is the cheaper path (no 481 MB weights download, no MLX memory footprint); if the on-device accuracy gap stays this small in daily use, it weakens the case for Whisper as the default engine. Revisit with a controlled A/B (same audio through both engines) before drawing a firm conclusion. **Tool for this:** `NoteDetailView`'s "Re-transcribe" menu (2026-06-12) re-runs a saved note's audio through the other engine and shows a current-vs-new comparison — the in-app substrate for the same-audio A/B. The persisted audio is what makes it possible (issue #4: audio kept as a debug/tuning asset).
+- **2026-06-14** — Three-way field read after Parakeet shipped (qualitative, single-observer, real use): **Apple Speech fastest, least accurate but usable; Parakeet slightly faster than Whisper; Whisper slightly more accurate than Parakeet** — note this inverts the published-WER expectation (Parakeet leads on paper), so a fixed-corpus check is the tiebreak if it ever matters. **Decision: Apple Speech is the permanent default; the A/B-to-pick-a-default is retired.** None of the three is worth dethroning Apple on a zero-setup basis, so the project pivots to mitigating STT errors with an on-device **cleanup model** (L1/L2) rather than chasing a better transcriber. Whisper/Parakeet stay opt-in upgrades.
 
 ---
 

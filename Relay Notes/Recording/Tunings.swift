@@ -23,6 +23,12 @@ struct AppleSpeechSettings: Sendable, Equatable {
 /// place to land.
 struct WhisperSettings: Sendable, Equatable {}
 
+/// Reserved home for on-device Parakeet decode dials. Empty in v1 (greedy TDT
+/// decode with fixed `max_symbols` / durations; the chunk window is a fixed
+/// 120 s / 15 s). Mirrors `WhisperSettings` so the per-engine surface stays
+/// symmetric and future dials have a place to land.
+struct ParakeetSettings: Sendable, Equatable {}
+
 @MainActor
 @Observable
 final class Tunings {
@@ -73,6 +79,9 @@ final class Tunings {
     /// No persisted fields yet — reserved (see `WhisperSettings`).
     var whisper: WhisperSettings
 
+    /// No persisted fields yet — reserved (see `ParakeetSettings`).
+    var parakeet: ParakeetSettings
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
 
@@ -106,8 +115,9 @@ final class Tunings {
             contextualStringsText: defaults.string(forKey: Key.contextualStringsText) ?? ""
         )
 
-        // Whisper bundle — nothing persisted yet.
+        // Whisper / Parakeet bundles — nothing persisted yet.
         self.whisper = WhisperSettings()
+        self.parakeet = ParakeetSettings()
     }
 
     func resetToDefaults() {
@@ -116,16 +126,21 @@ final class Tunings {
         engine = .apple
         apple = AppleSpeechSettings()
         whisper = WhisperSettings()
+        parakeet = ParakeetSettings()
     }
 
-    /// Enforces the invariant that Whisper can only be the selected engine
-    /// while its model is present on disk. If Whisper is selected but the model
-    /// isn't ready, fall back to Apple (always available). Single source of
-    /// truth for the rule — called at launch (a persisted `.whisperMLX` choice
-    /// can outlive a deleted model) and right after a model delete. No-op when
-    /// Apple is selected or the model is ready.
-    func reconcileEngineAvailability(whisperReady: Bool) {
-        if engine == .whisperMLX && !whisperReady {
+    /// Enforces the invariant that a model-backed engine can only be the selected
+    /// engine while its model is present on disk. If the selected engine isn't in
+    /// `readyEngines`, fall back to Apple (which has no model and is always ready,
+    /// so it's always present in the set). Single source of truth for the rule —
+    /// called at launch (a persisted engine choice can outlive a deleted model)
+    /// and right after a model delete.
+    ///
+    /// Per-engine since T2.3: `readyEngines` comes from `ModelStores.readyEngines`,
+    /// so adding an on-device engine needs no change here — the new engine is
+    /// simply absent from the set until its model downloads.
+    func reconcileEngineAvailability(readyEngines: Set<TranscriptionEngine>) {
+        if !readyEngines.contains(engine) {
             engine = .apple
         }
     }
@@ -148,6 +163,8 @@ final class Tunings {
             return .apple(AppleSpeechOptions(preset: apple.preset, contextualStrings: strings))
         case .whisperMLX:
             return .whisperMLX
+        case .parakeetMLX:
+            return .parakeetMLX
         }
     }
 
