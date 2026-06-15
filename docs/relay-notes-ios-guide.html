@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relay Notes — An iOS &amp; Swift Field Guide for Seasoned Programmers</title>
+<style>
+  :root {
+    --teal: #1bb5a4;
+    --teal-bright: #2fd4c0;
+    --indigo: #4f46e5;
+    --indigo-bright: #7c74ff;
+    --bg: #0d1117;
+    --bg-soft: #131a24;
+    --bg-card: #161d29;
+    --bg-code: #0a0e14;
+    --line: #243043;
+    --line-soft: #1c2533;
+    --text: #d7dee8;
+    --text-soft: #9aa6b6;
+    --text-dim: #6b7686;
+    --white: #f2f5f9;
+    --kw: #ff7b9c;
+    --type: #5fd4c0;
+    --str: #b5e48c;
+    --num: #f5b971;
+    --com: #5b6675;
+    --grad: linear-gradient(115deg, var(--teal) 0%, var(--indigo) 100%);
+    --grad-soft: linear-gradient(115deg, rgba(27,181,164,.14), rgba(79,70,229,.14));
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 1.5rem; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.62;
+    font-size: 16.5px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .layout { display: flex; max-width: 1280px; margin: 0 auto; }
+
+  /* ---------- Sidebar ---------- */
+  nav.side {
+    position: sticky; top: 0; align-self: flex-start;
+    height: 100vh; width: 268px; flex: 0 0 268px;
+    padding: 26px 20px 40px; overflow-y: auto;
+    border-right: 1px solid var(--line-soft);
+    background: var(--bg-soft);
+  }
+  nav.side .brand { display: flex; align-items: center; gap: 11px; margin-bottom: 6px; }
+  nav.side .logo {
+    width: 34px; height: 34px; border-radius: 9px; background: var(--grad);
+    display: grid; place-items: center; flex: 0 0 34px;
+    box-shadow: 0 4px 16px -4px rgba(79,70,229,.6);
+  }
+  nav.side .logo svg { width: 20px; height: 20px; }
+  nav.side .brand b { font-size: 15px; color: var(--white); letter-spacing: .2px; }
+  nav.side .tag { font-size: 11.5px; color: var(--text-dim); margin: 0 0 22px 45px; }
+  nav.side a { display: block; color: var(--text-soft); text-decoration: none;
+    font-size: 13.5px; padding: 6px 11px; border-radius: 7px; margin: 1px 0;
+    border-left: 2px solid transparent; transition: .14s; }
+  nav.side a:hover { color: var(--white); background: rgba(255,255,255,.03); }
+  nav.side a.active { color: var(--white); background: var(--grad-soft);
+    border-left-color: var(--teal-bright); }
+  nav.side a .n { color: var(--text-dim); font-variant-numeric: tabular-nums;
+    font-size: 11.5px; margin-right: 9px; }
+  nav.side a.active .n { color: var(--teal-bright); }
+
+  /* ---------- Main ---------- */
+  main { flex: 1 1 auto; min-width: 0; padding: 0 clamp(20px, 5vw, 68px) 120px; }
+  section { padding-top: 58px; margin-top: -10px; }
+  section:first-of-type { padding-top: 40px; }
+
+  h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.1; margin: 0 0 14px;
+    color: var(--white); letter-spacing: -.5px; font-weight: 800; }
+  h2 { font-size: clamp(22px, 3vw, 28px); margin: 0 0 18px; color: var(--white);
+    letter-spacing: -.3px; font-weight: 750; display: flex; align-items: baseline; gap: 14px; }
+  h2 .num { font-size: 15px; font-weight: 700; color: var(--teal-bright);
+    background: var(--grad-soft); border: 1px solid var(--line);
+    border-radius: 7px; padding: 3px 9px; flex: 0 0 auto; letter-spacing: 0; }
+  h3 { font-size: 18.5px; color: var(--white); margin: 30px 0 10px; font-weight: 700; }
+  h4 { font-size: 15px; color: var(--teal-bright); margin: 22px 0 6px;
+    text-transform: uppercase; letter-spacing: .6px; font-weight: 700; }
+  p { margin: 0 0 15px; }
+  a { color: var(--teal-bright); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  strong { color: var(--white); font-weight: 650; }
+  em { color: #c9d3e0; }
+  code.inl { background: #1b2433; border: 1px solid var(--line-soft); color: #9fe6d8;
+    padding: 1.5px 6px; border-radius: 5px; font-size: 13.5px;
+    font-family: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; }
+  .lead { font-size: 19px; color: var(--text); line-height: 1.6; }
+  hr.sep { border: none; border-top: 1px solid var(--line-soft); margin: 40px 0; }
+
+  /* ---------- Hero ---------- */
+  .hero { border: 1px solid var(--line); border-radius: 20px; padding: 38px 38px 34px;
+    background:
+      radial-gradient(1100px 360px at 0% -10%, rgba(27,181,164,.16), transparent 60%),
+      radial-gradient(900px 360px at 100% 0%, rgba(79,70,229,.18), transparent 55%),
+      var(--bg-card);
+    position: relative; overflow: hidden; }
+  .hero .eyebrow { font-size: 12.5px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--teal-bright); font-weight: 700; margin-bottom: 14px; }
+  .hero p.lead { max-width: 60ch; }
+  .pills { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 22px; }
+  .pill { font-size: 12.5px; color: var(--text-soft); border: 1px solid var(--line);
+    background: rgba(255,255,255,.02); padding: 5px 12px; border-radius: 30px; }
+  .pill b { color: var(--white); }
+
+  /* ---------- Cards / grids ---------- */
+  .grid { display: grid; gap: 16px; margin: 22px 0; }
+  .g2 { grid-template-columns: repeat(2, 1fr); }
+  .g3 { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 880px){ .g2,.g3 { grid-template-columns: 1fr; } }
+  .card { border: 1px solid var(--line); background: var(--bg-card);
+    border-radius: 14px; padding: 18px 20px; }
+  .card h4 { margin-top: 0; }
+  .card.accent { border-color: rgba(47,212,192,.4);
+    background: linear-gradient(180deg, rgba(27,181,164,.07), var(--bg-card)); }
+
+  /* Rosetta translation cards */
+  .ros { display: grid; gap: 13px; margin: 22px 0; }
+  .ros-row { display: grid; grid-template-columns: 1fr auto 1.3fr; align-items: center;
+    gap: 18px; border: 1px solid var(--line); background: var(--bg-card);
+    border-radius: 12px; padding: 14px 18px; }
+  @media (max-width: 760px){ .ros-row { grid-template-columns: 1fr; gap: 8px; } }
+  .ros-row .from { color: var(--text-soft); font-size: 14.5px; }
+  .ros-row .from b { color: var(--white); display:block; margin-bottom:2px; }
+  .ros-row .arrow { color: var(--teal-bright); font-size: 20px; }
+  @media (max-width: 760px){ .ros-row .arrow { display:none; } }
+  .ros-row .to { font-size: 14px; color: var(--text-soft); }
+  .ros-row .to code { color: #9fe6d8; font-family: "SF Mono", ui-monospace, Menlo, monospace;
+    font-size: 13px; background:#1b2433; padding:1px 6px; border-radius:5px; border:1px solid var(--line-soft); }
+
+  /* ---------- Callouts ---------- */
+  .note { border-radius: 12px; padding: 15px 18px 15px 17px; margin: 20px 0;
+    border: 1px solid var(--line); border-left-width: 4px; background: var(--bg-card);
+    font-size: 14.8px; }
+  .note .h { font-weight: 700; color: var(--white); display: flex; align-items: center;
+    gap: 8px; margin-bottom: 5px; }
+  .note.tip { border-left-color: var(--teal-bright); }
+  .note.warn { border-left-color: #f5b971; }
+  .note.gotcha { border-left-color: #ff7b9c; }
+  .note.info { border-left-color: var(--indigo-bright); }
+  .note p:last-child { margin-bottom: 0; }
+
+  /* ---------- Code ---------- */
+  pre { background: var(--bg-code); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; overflow-x: auto; margin: 18px 0; position: relative; }
+  pre code { font-family: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 13.2px; line-height: 1.62; color: #cdd6e3; white-space: pre; }
+  pre .cap { position: absolute; top: 0; right: 0; font-size: 10.5px; letter-spacing: .5px;
+    text-transform: uppercase; color: var(--text-dim); background: #11161f;
+    border-left: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    border-radius: 0 11px 0 8px; padding: 4px 11px; font-family: -apple-system, sans-serif; }
+  .tok-kw { color: var(--kw); }
+  .tok-type { color: var(--type); }
+  .tok-str { color: var(--str); }
+  .tok-num { color: var(--num); }
+  .tok-com { color: var(--com); font-style: italic; }
+
+  /* ---------- Pipeline diagram ---------- */
+  .flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; margin: 24px 0; }
+  .flow .stage { flex: 1 1 0; min-width: 130px; border: 1px solid var(--line);
+    background: var(--bg-card); border-radius: 12px; padding: 14px 14px; text-align: center;
+    position: relative; }
+  .flow .stage .ic { font-size: 20px; margin-bottom: 6px; }
+  .flow .stage b { display: block; color: var(--white); font-size: 14px; }
+  .flow .stage span { font-size: 12px; color: var(--text-dim); }
+  .flow .arr { flex: 0 0 30px; display: grid; place-items: center; color: var(--teal-bright);
+    font-size: 22px; }
+  @media (max-width: 760px){ .flow { flex-direction: column; } .flow .arr { transform: rotate(90deg); height: 26px; } }
+
+  /* ---------- Step walkthrough ---------- */
+  .steps { counter-reset: step; margin: 24px 0; }
+  .step { position: relative; padding: 0 0 26px 56px; }
+  .step:not(:last-child)::before { content: ""; position: absolute; left: 19px; top: 8px;
+    bottom: -6px; width: 2px; background: linear-gradient(var(--teal), var(--indigo)); opacity: .45; }
+  .step::after { counter-increment: step; content: counter(step); position: absolute;
+    left: 0; top: -4px; width: 40px; height: 40px; border-radius: 11px; background: var(--grad);
+    color: #fff; font-weight: 800; display: grid; place-items: center; font-size: 16px;
+    box-shadow: 0 4px 14px -4px rgba(79,70,229,.7); }
+  .step h4 { margin: 4px 0 6px; color: var(--white); text-transform: none; letter-spacing: 0;
+    font-size: 16px; }
+  .step p { margin-bottom: 8px; color: var(--text-soft); font-size: 14.6px; }
+  .step .file { font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 12px;
+    color: var(--teal-bright); }
+
+  /* ---------- Compare table ---------- */
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14.3px;
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 11px 15px; border-bottom: 1px solid var(--line-soft);
+    vertical-align: top; }
+  th { background: var(--bg-soft); color: var(--white); font-weight: 650; font-size: 13px;
+    text-transform: uppercase; letter-spacing: .5px; }
+  td { color: var(--text-soft); }
+  td b { color: var(--text); }
+  tr:last-child td { border-bottom: none; }
+  td code, th code { font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 12.5px;
+    color: #9fe6d8; }
+
+  .foot { border-top: 1px solid var(--line-soft); margin-top: 60px; padding-top: 22px;
+    color: var(--text-dim); font-size: 13px; }
+  ul.clean { padding-left: 20px; }
+  ul.clean li { margin-bottom: 7px; }
+  .kbd { font-family: "SF Mono", ui-monospace, monospace; font-size: 12px; background:#1b2433;
+    border:1px solid var(--line); border-bottom-width:2px; border-radius:6px; padding:1px 7px; color:#cdd6e3; }
+
+  /* mobile nav toggle */
+  .navtoggle { display: none; }
+  @media (max-width: 1000px) {
+    nav.side { position: fixed; z-index: 50; transform: translateX(-100%); transition: .25s;
+      box-shadow: 0 0 60px rgba(0,0,0,.6); }
+    nav.side.open { transform: translateX(0); }
+    .navtoggle { display: grid; place-items:center; position: fixed; z-index: 60; top: 14px; left: 14px;
+      width: 44px; height: 44px; border-radius: 11px; background: var(--grad); border: none;
+      color:#fff; cursor: pointer; box-shadow: 0 6px 18px -4px rgba(0,0,0,.6); }
+    main { padding-top: 60px; }
+  }
+
+  /* ---------- Architecture diagrams (inline SVG, dependency-free) ---------- */
+  figure.diagram { margin: 26px 0; border: 1px solid var(--line); border-radius: 14px;
+    background: linear-gradient(180deg, #121925, var(--bg-card)); padding: 18px 16px 10px; }
+  figure.diagram svg { width: 100%; height: auto; display: block; }
+  figure.diagram figcaption { font-size: 12.8px; color: var(--text-dim); text-align: center;
+    margin-top: 10px; line-height: 1.5; max-width: 66ch; margin-left: auto; margin-right: auto; }
+  .diagram text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .dg-box     { fill: #1a2230; stroke: #2b3950; stroke-width: 1.5; }
+  .dg-accent  { fill: rgba(27,181,164,.13); stroke: var(--teal-bright); stroke-width: 1.7; }
+  .dg-indigo  { fill: rgba(79,70,229,.18); stroke: var(--indigo-bright); stroke-width: 1.5; }
+  .dg-amber   { fill: rgba(245,185,113,.13); stroke: #f5b971; stroke-width: 1.5; }
+  .dg-pink    { fill: rgba(255,123,156,.13); stroke: var(--kw); stroke-width: 1.5; }
+  .dg-region  { fill: rgba(255,255,255,.022); stroke: #33425a; stroke-width: 1.4; stroke-dasharray: 5 4; }
+  .dg-band    { fill: #0e131c; stroke: #1c2533; }
+  .dg-t       { fill: #f2f5f9; font-weight: 700; }
+  .dg-s       { fill: #93a0b1; }
+  .dg-mono    { font-family: "SF Mono", ui-monospace, Menlo, monospace; fill: #9fe6d8; }
+  .dg-edge       { stroke: #6b7890; stroke-width: 1.7; fill: none; }
+  .dg-edge-async { stroke: var(--teal-bright); stroke-width: 1.7; fill: none; stroke-dasharray: 6 4; }
+  .dg-elbl   { fill: #cdd6e3; }
+  .dg-elbl-a { fill: #84e3d5; }
+  .dg-dom    { fill: var(--indigo-bright); font-weight: 700; letter-spacing: .4px; }
+  .dg-dom-t  { fill: var(--teal-bright); font-weight: 700; letter-spacing: .4px; }
+  .dg-dom-a  { fill: #f5b971; font-weight: 700; letter-spacing: .4px; }
+</style>
+</head>
+<body>
+
+<button class="navtoggle" aria-label="Toggle navigation" onclick="document.querySelector('nav.side').classList.toggle('open')">☰</button>
+
+<div class="layout">
+  <nav class="side">
+    <div class="brand">
+      <span class="logo"><svg viewBox="0 0 24 24" fill="none"><path d="M4 14V10M8 18V6M12 15V9M16 17V7M20 13v-2" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></span>
+      <b>Relay Notes</b>
+    </div>
+    <p class="tag">iOS &amp; Swift field guide</p>
+    <a href="#intro"><span class="n">00</span>Start here</a>
+    <a href="#tour"><span class="n">01</span>The 60-second tour</a>
+    <a href="#rosetta"><span class="n">02</span>The Rosetta Stone</a>
+    <a href="#swift"><span class="n">03</span>Swift, the parts that bite</a>
+    <a href="#swiftui"><span class="n">04</span>SwiftUI: UI as a function</a>
+    <a href="#concurrency"><span class="n">05</span>Swift 6 concurrency</a>
+    <a href="#spine"><span class="n">06</span>The architecture spine</a>
+    <a href="#dataflow"><span class="n">07</span>Tap → speak → saved</a>
+    <a href="#persistence"><span class="n">08</span>Persistence: SwiftData</a>
+    <a href="#engines"><span class="n">09</span>Three engines, one socket</a>
+    <a href="#ios"><span class="n">10</span>iOS realities</a>
+    <a href="#tooling"><span class="n">11</span>Build &amp; tooling</a>
+    <a href="#map"><span class="n">12</span>Where to read next</a>
+  </nav>
+
+  <main>
+
+  <!-- ===================== INTRO ===================== -->
+  <section id="intro">
+    <div class="hero">
+      <div class="eyebrow">A guide for people who already ship software</div>
+      <h1>Relay Notes, decoded.</h1>
+      <p class="lead">You know how to architect systems, reason about concurrency, and read a call graph. What you may <em>not</em> know is the iOS dialect: SwiftUI, actors, property wrappers, SwiftData, and the strict-concurrency rules Swift 6 enforces at compile time. This guide is a <strong>translation layer</strong> — it maps what you already know onto how a real, working iPhone app is built, using <strong>Relay Notes</strong> as the worked example.</p>
+      <div class="pills">
+        <span class="pill"><b>What</b> &nbsp;on-device voice → text → cleanup</span>
+        <span class="pill"><b>UI</b> &nbsp;SwiftUI</span>
+        <span class="pill"><b>Concurrency</b> &nbsp;Swift 6 strict</span>
+        <span class="pill"><b>Data</b> &nbsp;SwiftData</span>
+        <span class="pill"><b>ML</b> &nbsp;MLX · Whisper · Parakeet · LLM</span>
+        <span class="pill"><b>Target</b> &nbsp;iPhone 15 Pro Max</span>
+      </div>
+    </div>
+
+    <h3>How to read this</h3>
+    <p>The sections build on each other but each stands alone. If you want the <em>aha</em> fast, read <a href="#rosetta">§02 the Rosetta Stone</a> (concept mapping), then jump straight to <a href="#dataflow">§07</a>, which traces a single recording end-to-end through the actual types. The middle sections (§03–§05) are the language/framework primer; the later ones (§06–§11) are this app's architecture and the iOS-specific gotchas.</p>
+    <div class="note tip">
+      <div class="h">▹ The one idea that explains the whole codebase</div>
+      <p><strong>Every external capability sits behind a protocol so the runtime provider is swappable without a rebuild.</strong> Transcription has <em>three</em> interchangeable engines (Apple Speech, on-device Whisper, on-device Parakeet) plugged into one socket — and the app now does the same trick a <em>second</em> time for an on-device LLM "Clean up" pass (a separate <code class="inl">LanguageModel</code> spine). Hold that thought — it's <em>the</em> pattern, and most of the architecture exists to serve it.</p>
+    </div>
+  </section>
+
+  <!-- ===================== TOUR ===================== -->
+  <section id="tour">
+    <h2><span class="num">01</span> The 60-second tour</h2>
+    <p>Relay Notes is intentionally tiny in scope: <strong>tap a button, speak, and an on-device transcript is saved</strong> — then, optionally, a one-tap on-device LLM "Clean up" pass tidies it. No account, no server, works in airplane mode. That narrowness is a feature — it keeps the surface small enough that the architecture is legible. The pipeline is a straight line, with cleanup as an optional post-hoc step on a saved note:</p>
+
+    <div class="flow">
+      <div class="stage"><div class="ic">🎙️</div><b>Capture</b><span>mic → PCM</span></div>
+      <div class="arr">›</div>
+      <div class="stage"><div class="ic">💾</div><b>Persist audio</b><span>AAC/m4a</span></div>
+      <div class="arr">›</div>
+      <div class="stage"><div class="ic">📝</div><b>Transcribe</b><span>on-device</span></div>
+      <div class="arr">›</div>
+      <div class="stage"><div class="ic">🗂️</div><b>Store note</b><span>SwiftData</span></div>
+      <div class="arr">⋯›</div>
+      <div class="stage" style="border-style:dashed;opacity:.85"><div class="ic">✨</div><b>Clean up</b><span>opt · on-device LLM</span></div>
+    </div>
+
+    <p>The "transcribe" box is where the interesting design lives. It's not one thing — it's a <em>socket</em> that accepts any of three on-device engines:</p>
+    <div class="grid g3">
+      <div class="card accent">
+        <h4>Apple Speech — permanent default</h4>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)">Built into iOS (<code class="inl">SpeechAnalyzer</code> + <code class="inl">SpeechTranscriber</code>). Streams a <strong>live transcript</strong> as you talk. No download. The "it just works" floor — and the settled default (iOS 27 strengthens it).</p>
+      </div>
+      <div class="card">
+        <h4>Whisper — opt-in upgrade</h4>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)"><code class="inl">whisper-small.en</code> (481&nbsp;MB) via <a href="https://github.com/ml-explore/mlx-swift">MLX</a>. Downloaded on first use. <strong>Decodes once when you stop</strong>. Proves "on-device ≠ Apple-only."</p>
+      </div>
+      <div class="card">
+        <h4>Parakeet — opt-in upgrade</h4>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)">NVIDIA <code class="inl">parakeet-tdt-0.6b-v2</code> (FastConformer + TDT, ~2.4&nbsp;GB) via MLX. Also finalize-only. A second your-choice engine, hand-ported the same way.</p>
+      </div>
+    </div>
+    <p>And the "Clean up" feature is the <em>same pattern again</em>: a one-tap action that runs the saved transcript through an on-device LLM (Gemma 4 E2B) behind a separate <code class="inl">LanguageModel</code> protocol. Everything below explains how these pieces are wired so that swapping a provider is a runtime choice, not a code change — and how Swift's type system and concurrency model keep it safe.</p>
+  </section>
+
+  <!-- ===================== ROSETTA ===================== -->
+  <section id="rosetta">
+    <h2><span class="num">02</span> The Rosetta Stone</h2>
+    <p class="lead">Almost every iOS concept has a name you already know under a different label. Here's the dictionary. Skim it now; the rest of the guide makes it concrete.</p>
+
+    <div class="ros">
+      <div class="ros-row">
+        <div class="from"><b>Interface / abstract base / trait</b>defines a contract, no implementation</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>protocol</code> — e.g. <code>Transcriber</code>, <code>TranscriptionSession</code>. Conformers can be classes, structs, or actors.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>Discriminated union / sum type / sealed class</b>"one of these shapes, type-safely"</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>enum</code> with associated values — e.g. <code>TranscriptionOptions.apple(…) | .whisperMLX</code></div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>async / await</b>same as JS, C#, Rust, Python</div>
+        <div class="arrow">→</div>
+        <div class="to">Identical keywords. <code>Task { … }</code> ≈ spawning a coroutine; structured concurrency is the default.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>UI thread / main thread affinity</b>"touch UI only from the main thread"</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>@MainActor</code> — a compiler-enforced annotation, not a convention you have to remember.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>Thread-safe / no data races</b>guaranteed at compile time</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>Sendable</code> + <code>actor</code>. Swift 6 <em>rejects the build</em> on a potential data race.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>Observable / Channel / Stream / Subject</b>push values to a consumer over time</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>AsyncStream&lt;T&gt;</code> — consumed with <code>for await x in stream</code>.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>React component + render()</b>UI is a pure function of state</div>
+        <div class="arrow">→</div>
+        <div class="to">A <code>struct</code> conforming to <code>View</code>, with a <code>body</code> computed property.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>useState / signals / observable state</b>state that re-renders the UI</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>@State</code>, <code>@Observable</code>. Mutating a tracked field re-runs the affected <code>body</code>.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>React Context / DI scope / ambient injection</b>"reach a dependency without prop-drilling"</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>@Environment(\.modelContext)</code> and friends.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>ORM entity + repository/session</b>ActiveRecord, Hibernate, Prisma model</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>@Model class Note</code> (entity) + <code>ModelContext</code> (unit of work) + <code>@Query</code> (live result set).</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>Nullable&lt;T&gt; / Option&lt;T&gt; / T?</b>"might be absent"</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>T?</code>, unwrapped with <code>guard let</code> / <code>if let</code>. No implicit null.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>main() / app entry point</b>where the process starts</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>@main struct …App: App</code> with a <code>body: some Scene</code>.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>package.json / pom.xml / Cargo.toml</b>project + dependency manifest</div>
+        <div class="arrow">→</div>
+        <div class="to">The <code>.xcodeproj</code> (a <code>project.pbxproj</code> file) + Swift Package Manager (<code>Package.resolved</code>).</div>
+      </div>
+    </div>
+    <div class="note info">
+      <div class="h">◆ The mental model that pays off most</div>
+      <p>Swift leans <strong>value types</strong> (struct/enum, copied) far harder than the OO languages you're used to. Reference types (<code class="inl">class</code>, <code class="inl">actor</code>) are the exception, reserved for identity and shared mutable state. When you see <code class="inl">struct</code> here, think "immutable-ish value, cheap to copy, no aliasing surprises." That single shift removes most "wait, why did that change?" confusion.</p>
+    </div>
+  </section>
+
+  <!-- ===================== SWIFT LANG ===================== -->
+  <section id="swift">
+    <h2><span class="num">03</span> Swift, the parts that bite</h2>
+    <p>You can read Swift on sight — it's C-family with type inference. Four features show up constantly in this codebase and behave differently than their cousins elsewhere. Learn these four and the source stops surprising you.</p>
+
+    <h3>1. <code class="inl">struct</code> vs <code class="inl">class</code> vs <code class="inl">actor</code> vs <code class="inl">enum</code></h3>
+    <p>Four ways to declare a type, chosen by <em>semantics</em>, not habit:</p>
+    <table>
+      <tr><th>Keyword</th><th>Semantics</th><th>Used here for</th></tr>
+      <tr><td><code>struct</code></td><td><b>Value</b> — copied on assignment, no shared identity</td><td><code>Note</code> options, <code>RecordingOptions</code>, every <code>View</code></td></tr>
+      <tr><td><code>enum</code></td><td><b>Value</b> + closed set of cases, optionally with payloads</td><td><code>TranscriptionOptions</code>, the recorder's <code>State</code></td></tr>
+      <tr><td><code>class</code></td><td><b>Reference</b> — shared identity, mutable, ARC-managed</td><td><code>RecorderViewModel</code>, <code>Tunings</code>, <code>LiveAudioEngine</code></td></tr>
+      <tr><td><code>actor</code></td><td><b>Reference</b> + serialized access (its own isolation domain)</td><td><code>WhisperMLXTranscriber</code> (guards ~480&nbsp;MB of model state)</td></tr>
+    </table>
+
+    <h3>2. Enums carry data — this is the tagged union you wanted</h3>
+    <p>This is the single most important Swift idiom in the app. <code class="inl">TranscriptionOptions</code> isn't a struct with a pile of nullable fields — it's a closed set of shapes, each with its own type-safe payload:</p>
+    <pre><code class="swift">enum TranscriptionOptions: Sendable {
+    case apple(AppleSpeechOptions)   // Apple-only: preset + contextual strings
+    case whisperMLX                  // Whisper: no decode dials in v1
+}
+
+struct AppleSpeechOptions: Sendable {
+    var preset: SpeechTranscriber.Preset = .transcription
+    var contextualStrings: [String] = []
+}</code></pre>
+    <p>You destructure it with <code class="inl">switch</code> or pattern-matching <code class="inl">guard</code>. The compiler forces you to handle every case, and you literally cannot read Apple's <code class="inl">preset</code> out of a <code class="inl">.whisperMLX</code> value — it doesn't exist on that case. That's a whole class of "field is null for this provider" bugs deleted at the type level.</p>
+
+    <h3>3. The recorder is a state machine, expressed as an enum</h3>
+    <p>Instead of a tangle of <code class="inl">isRecording</code> / <code class="inl">isPaused</code> / <code class="inl">errorMessage</code> booleans that can contradict each other, the recorder's entire lifecycle is <em>one</em> value that's always exactly one valid state:</p>
+    <pre><code class="swift">enum State: Equatable {
+    case idle
+    case recording(partial: String)   // live transcript so far
+    case paused(partial: String)      // interrupted by a call/Siri/alarm
+    case finalizing                   // stopped; transcribing
+    case finished(transcript: String)
+    case failed(message: String)
+}</code></pre>
+    <p>Illegal states are unrepresentable — there is no "recording AND failed" because the value is one case at a time. Transitions are a pure <code class="inl">switch</code>, which makes them unit-testable without spinning up audio hardware (see <code class="inl">RecorderViewModel.nextState(for:from:)</code>). Drawn out, the whole lifecycle is small:</p>
+
+    <figure class="diagram">
+    <svg viewBox="0 0 880 300" role="img" aria-label="Recorder state machine">
+      <defs>
+        <marker id="ahD" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6b7890"/></marker>
+        <marker id="ahDr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2fd4c0"/></marker>
+      </defs>
+
+      <!-- nodes -->
+      <rect class="dg-box" x="24" y="124" width="104" height="48" rx="11"/>
+      <text class="dg-t" x="76" y="153" text-anchor="middle" font-size="14">idle</text>
+
+      <rect class="dg-accent" x="238" y="40" width="150" height="50" rx="11"/>
+      <text class="dg-t" x="313" y="62" text-anchor="middle" font-size="13">recording</text>
+      <text class="dg-s" x="313" y="78" text-anchor="middle" font-size="9.5">partial: String</text>
+
+      <rect class="dg-amber" x="238" y="150" width="150" height="50" rx="11"/>
+      <text class="dg-t" x="313" y="172" text-anchor="middle" font-size="13">paused</text>
+      <text class="dg-s" x="313" y="188" text-anchor="middle" font-size="9.5">partial: String</text>
+
+      <rect class="dg-box" x="470" y="100" width="140" height="50" rx="11"/>
+      <text class="dg-t" x="540" y="122" text-anchor="middle" font-size="13">finalizing</text>
+      <text class="dg-s" x="540" y="138" text-anchor="middle" font-size="9.5">transcribing…</text>
+
+      <rect class="dg-accent" x="700" y="40" width="156" height="50" rx="11"/>
+      <text class="dg-t" x="778" y="62" text-anchor="middle" font-size="13">finished</text>
+      <text class="dg-s" x="778" y="78" text-anchor="middle" font-size="9.5">transcript</text>
+
+      <rect class="dg-pink" x="700" y="150" width="156" height="50" rx="11"/>
+      <text class="dg-t" x="778" y="172" text-anchor="middle" font-size="13">failed</text>
+      <text class="dg-s" x="778" y="188" text-anchor="middle" font-size="9.5">message</text>
+
+      <!-- edges -->
+      <g font-size="10.5">
+        <path class="dg-edge" marker-end="url(#ahD)" d="M128,142 C180,138 196,74 236,66"/>
+        <text class="dg-elbl" x="150" y="92" text-anchor="middle">tap ● start</text>
+
+        <path class="dg-edge" marker-end="url(#ahD)" d="M300,90 L300,150"/>
+        <text class="dg-elbl" x="226" y="124" text-anchor="end">.began</text>
+
+        <path class="dg-edge" marker-end="url(#ahD)" d="M328,150 L328,91"/>
+        <text class="dg-elbl" x="340" y="124">.resumed</text>
+
+        <path class="dg-edge" marker-end="url(#ahD)" d="M388,72 C428,82 432,108 468,116"/>
+        <text class="dg-elbl" x="406" y="84">tap ◼ stop</text>
+
+        <path class="dg-edge" marker-end="url(#ahD)" d="M388,176 C430,168 436,140 468,132"/>
+        <text class="dg-elbl" x="406" y="188">.stopped</text>
+
+        <path class="dg-edge" marker-end="url(#ahD)" d="M610,118 C650,106 660,76 698,68"/>
+        <text class="dg-elbl" x="632" y="86">ok</text>
+
+        <path class="dg-edge" marker-end="url(#ahD)" d="M610,132 C652,144 660,166 698,174"/>
+        <text class="dg-elbl" x="620" y="150">error / no speech</text>
+
+        <path class="dg-edge-async" marker-end="url(#ahDr)" d="M778,200 C778,262 76,262 76,172"/>
+        <text class="dg-elbl-a" x="430" y="258" text-anchor="middle">reset() — finished / failed → idle</text>
+      </g>
+    </svg>
+    <figcaption><strong>recording ↔ paused</strong> is driven entirely by <code class="inl">AVAudioSession</code> interruptions (a call/Siri/alarm); a non-resumable <code class="inl">.stopped</code> auto-finalizes so audio is never lost. A failure during start or transcription lands in <strong>failed</strong> with a user-friendly message.</figcaption>
+    </figure>
+
+    <h3>4. Optionals and <code class="inl">guard</code></h3>
+    <p>There is no <code class="inl">null</code>. "Might be absent" is encoded in the type as <code class="inl">T?</code>, and you must unwrap before use. The idiomatic unwrap is <code class="inl">guard let</code> — an early-return that also <em>narrows the type</em> for the rest of the scope:</p>
+    <pre><code class="swift">guard let session, let url else {
+    state = .failed(message: "Recording could not be saved. Please try again.")
+    return
+}
+// past this line, `session` and `url` are non-optional</code></pre>
+    <div class="note tip">
+      <div class="h">▹ Reading tip</div>
+      <p><code class="inl">some View</code> / <code class="inl">any Transcriber</code>: <code class="inl">some</code> means "one specific concrete type the compiler knows but I won't name" (opaque return); <code class="inl">any</code> means "a boxed value of <em>any</em> conformer, decided at runtime" (existential). The app uses <code class="inl">any Transcriber</code> precisely <em>because</em> the concrete engine is a runtime choice.</p>
+    </div>
+  </section>
+
+  <!-- ===================== SWIFTUI ===================== -->
+  <section id="swiftui">
+    <h2><span class="num">04</span> SwiftUI: the UI is a function of state</h2>
+    <p>If you've used React, SwiftUI will feel familiar: you <em>describe</em> the UI for a given state, and the framework diffs and re-renders. A view is a <strong>struct</strong> (cheap, disposable, recreated constantly) with a <code class="inl">body</code> that returns a description of the UI — never an imperative "now mutate this label."</p>
+
+    <pre><code class="swift">struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext   // injected dependency
+    @State private var viewModel: RecorderViewModel?        // owned, re-renders on change
+    @State private var showSettings = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                NotesListView(searchText: searchText, reTranscriber: reTranscriber)
+                Divider()
+                if let viewModel {
+                    RecorderView(viewModel: viewModel)
+                }
+            }
+            .navigationTitle("Relay Notes")
+            .toolbar { /* settings button */ }
+            .sheet(isPresented: $showSettings) { /* settings sheet */ }
+        }
+    }
+}</code></pre>
+
+    <h3>Property wrappers = where state lives</h3>
+    <p>Those <code class="inl">@</code>-prefixed declarations aren't decoration — each one tells SwiftUI a different thing about ownership and reactivity:</p>
+    <table>
+      <tr><th>Wrapper</th><th>Closest analogue</th><th>Means</th></tr>
+      <tr><td><code>@State</code></td><td><code>useState</code></td><td>This view <b>owns</b> this value; mutating it re-renders.</td></tr>
+      <tr><td><code>@Observable</code></td><td>a signal / observable store</td><td>Macro on a class; reads in a <code>body</code> auto-subscribe. <code>RecorderViewModel</code> and <code>Tunings</code> use it.</td></tr>
+      <tr><td><code>@Environment</code></td><td>React Context</td><td>Pull an ambient dependency (the SwiftData context) without threading it through every initializer.</td></tr>
+      <tr><td><code>@Query</code></td><td>a live DB query / <code>useQuery</code></td><td>A SwiftData fetch that <b>re-runs and re-renders</b> when matching rows change. The notes list is just <code>@Query(sort: \.createdAt, order: .reverse)</code>.</td></tr>
+      <tr><td><code>$value</code></td><td>two-way binding</td><td>The <code>$</code> prefix makes a <code>Binding</code> — a read/write handle a child view (e.g. a <code>TextField</code>) can mutate.</td></tr>
+    </table>
+
+    <h3>The composition root: where dependencies are wired</h3>
+    <p>Notice <code class="inl">viewModel</code> starts as <code class="inl">nil</code>. The app has no DI container — instead there's a <strong>composition root</strong>, the spot where the real object graph is assembled once, lazily, the first time the view appears:</p>
+    <pre><code class="swift">.task {                                  // runs once when the view appears
+    if viewModel == nil {
+        let tunings = Tunings()
+        tunings.reconcileEngineAvailability(whisperReady: whisperStore.status == .ready)
+        let factory = TranscriberFactory(whisperModelStore: whisperStore)
+        viewModel = RecorderViewModel(
+            engine: LiveAudioEngine(),
+            transcriberFactory: factory,
+            modelContext: modelContext,
+            tunings: tunings
+        )
+        reTranscriber = ReTranscriber(factory: factory, whisperStore: whisperStore)
+    }
+}</code></pre>
+    <p>This is hand-rolled constructor injection: the view model is handed its collaborators (<code class="inl">LiveAudioEngine</code>, the factory, the SwiftData context, the tunings) rather than reaching for globals. That's what makes the logic testable — tests construct a <code class="inl">RecorderViewModel</code> with fakes. <code class="inl">.task</code> is the lifecycle hook (≈ <code class="inl">useEffect(() =&gt; …, [])</code>), and it's <code class="inl">async</code>-aware so it can <code class="inl">await</code> without blocking the UI.</p>
+    <div class="note info">
+      <div class="h">◆ MVVM, lightly</div>
+      <p>Views stay dumb (layout + bindings). The <code class="inl">RecorderViewModel</code> holds the state machine and orchestration. This split is what lets the gnarly async audio logic be exercised by 80-odd unit tests while the SwiftUI layer stays a thin shell.</p>
+    </div>
+  </section>
+
+  <!-- ===================== CONCURRENCY ===================== -->
+  <section id="concurrency">
+    <h2><span class="num">05</span> Swift 6 concurrency (read this twice)</h2>
+    <p class="lead">This is the section that trips up newcomers the hardest, because Swift 6 promotes data races from "runtime heisenbug" to <strong>compile error</strong>. The rules are strict, but once they click, the audio pipeline reads cleanly.</p>
+
+    <h3>Actors = isolation domains</h3>
+    <p>An <code class="inl">actor</code> is a reference type whose mutable state can only be touched one task at a time — the compiler serializes access for you. Calls from outside hop onto the actor and are therefore <code class="inl">await</code>-ed. The Whisper transcriber is an actor precisely because it caches ~480&nbsp;MB of non-thread-safe MLX model state across calls:</p>
+    <pre><code class="swift">actor WhisperMLXTranscriber: Transcriber {
+    private var cache: LoadedAssets?      // model + tokenizer + mel filters
+    // serialized by the actor → safe to mutate without a single lock
+}</code></pre>
+
+    <h3><code class="inl">@MainActor</code> = the UI isolation domain</h3>
+    <p>There's a special global actor, <code class="inl">@MainActor</code>, that represents the main thread. Anything that touches UI state is annotated with it, and the compiler then <em>guarantees</em> those members run on the main thread. The view model and the audio engine both opt in:</p>
+    <pre><code class="swift">@MainActor
+@Observable
+final class RecorderViewModel { /* state, tasks, orchestration */ }
+
+@MainActor
+final class LiveAudioEngine { /* setup/teardown on the main actor */ }</code></pre>
+    <p>Notably, this project sets <code class="inl">SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor</code> — so types are <em>main-actor by default</em> unless they opt out. That default is convenient for UI code but creates the single sharpest gotcha in the codebase 👇</p>
+
+    <div class="note gotcha">
+      <div class="h">⚠ The <code style="color:inherit">nonisolated protocol</code> trap</div>
+      <p>With main-actor-by-default on, an <strong>unannotated protocol becomes implicitly <code class="inl">@MainActor</code></strong>, and conformance inference then silently smears <code class="inl">@MainActor</code> onto your conformers — it once stamped <code class="inl">@MainActor</code> onto an <em>actor's</em> synchronous <code class="inl">init</code>. The fix is to mark isolation-neutral protocols explicitly:</p>
+      <pre style="margin:10px 0 0"><code class="swift">// Both protocols are nonisolated *on purpose* so each conformer
+// picks its own isolation: AppleSpeechTranscriber is a plain class,
+// WhisperMLXTranscriber is an actor.
+nonisolated protocol Transcriber: Sendable {
+    func transcribe(_ audio: URL, options: TranscriptionOptions) async throws -> String
+    func makeStreamingSession(options: TranscriptionOptions) async throws -> any TranscriptionSession
+}</code></pre>
+    </div>
+
+    <h3><code class="inl">Sendable</code> = "safe to cross an isolation boundary"</h3>
+    <p>To pass a value between actors/tasks, the compiler must know it can't introduce a race. Value types (struct/enum of <code class="inl">Sendable</code> parts) are automatically <code class="inl">Sendable</code>. When you <em>know</em> something is safe but can't prove it to the compiler — like a helper that the audio thread touches single-threaded by construction — you assert it with <code class="inl">@unchecked Sendable</code> and take responsibility:</p>
+    <pre><code class="swift">// Runs on the realtime audio thread; single-threaded access by construction.
+private final class TapState: @unchecked Sendable { … }</code></pre>
+
+    <h3><code class="inl">AsyncStream</code> = the backbone of the pipeline</h3>
+    <p>The whole capture→transcribe handoff is plumbed with async streams — a producer <code class="inl">yield</code>s values, a consumer <code class="inl">for await</code>s them. Three streams flow through a single recording:</p>
+    <pre><code class="swift">struct LiveRecording: Sendable {
+    let url: URL                                       // where the audio file lands
+    let buffers: AsyncStream&lt;AVAudioPCMBuffer&gt;          // mic audio, chunk by chunk
+    let interruptions: AsyncStream&lt;InterruptionEvent&gt;  // call/Siri/alarm events
+}</code></pre>
+    <p>And the transcript itself comes back as a stream of ever-growing strings — that's how the live partial transcript updates the UI character-by-character:</p>
+    <pre><code class="swift">updatesTask = Task { [weak self, session] in
+    for await partial in session.updates {          // each value = transcript so far
+        guard let self else { return }
+        if case .recording = self.state {
+            self.state = .recording(partial: partial)   // re-renders the live card
+        }
+    }
+}</code></pre>
+
+    <figure class="diagram">
+    <svg viewBox="0 0 880 410" role="img" aria-label="Concurrency isolation domains and the boundaries between them">
+      <defs>
+        <marker id="ahB" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6b7890"/></marker>
+        <marker id="ahBa" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2fd4c0"/></marker>
+      </defs>
+
+      <!-- ===== regions ===== -->
+      <rect class="dg-region" x="16" y="46" width="372" height="210" rx="14"/>
+      <text class="dg-dom" x="28" y="38" font-size="12.5">@MainActor — UI &amp; orchestration</text>
+
+      <rect class="dg-region" x="410" y="46" width="210" height="150" rx="14"/>
+      <text class="dg-dom-a" x="420" y="38" font-size="12.5">audio thread · realtime</text>
+
+      <rect class="dg-region" x="410" y="214" width="210" height="150" rx="14"/>
+      <text class="dg-dom-t" x="420" y="206" font-size="12.5">actor — serialized</text>
+
+      <rect class="dg-region" x="642" y="46" width="222" height="318" rx="14"/>
+      <text class="dg-s" x="652" y="38" font-size="11.5" font-weight="700">nonisolated · own isolation</text>
+
+      <!-- ===== MainActor inner ===== -->
+      <rect class="dg-indigo" x="36" y="78" width="196" height="74" rx="10"/>
+      <text class="dg-t" x="134" y="103" text-anchor="middle" font-size="12">RecorderViewModel</text>
+      <text class="dg-s" x="134" y="119" text-anchor="middle" font-size="9.5">@Observable · state machine</text>
+      <text class="dg-s" x="134" y="133" text-anchor="middle" font-size="9.5">feed / updates / interruption tasks</text>
+
+      <rect class="dg-box" x="252" y="78" width="120" height="40" rx="9"/>
+      <text class="dg-t" x="312" y="102" text-anchor="middle" font-size="11.5">Tunings</text>
+
+      <rect class="dg-box" x="252" y="128" width="120" height="44" rx="9"/>
+      <text class="dg-t" x="312" y="148" text-anchor="middle" font-size="10.5">TranscriberFactory</text>
+      <text class="dg-s" x="312" y="162" text-anchor="middle" font-size="9.5">caches providers</text>
+
+      <rect class="dg-box" x="36" y="180" width="196" height="62" rx="10"/>
+      <text class="dg-t" x="134" y="204" text-anchor="middle" font-size="12">LiveAudioEngine</text>
+      <text class="dg-s" x="134" y="219" text-anchor="middle" font-size="9.5">setup / teardown on main actor</text>
+      <text class="dg-s" x="134" y="233" text-anchor="middle" font-size="9.5">installs the input tap ▸</text>
+
+      <rect class="dg-box" x="252" y="180" width="120" height="62" rx="9"/>
+      <text class="dg-t" x="312" y="208" text-anchor="middle" font-size="11.5">SwiftUI Views</text>
+      <text class="dg-s" x="312" y="223" text-anchor="middle" font-size="9.5">read state →</text>
+      <text class="dg-s" x="312" y="236" text-anchor="middle" font-size="9.5">re-render</text>
+
+      <!-- ===== audio-thread inner ===== -->
+      <rect class="dg-amber" x="428" y="82" width="174" height="40" rx="9"/>
+      <text class="dg-t" x="515" y="106" text-anchor="middle" font-size="11.5">input tap closure</text>
+
+      <rect class="dg-box" x="428" y="132" width="174" height="48" rx="9"/>
+      <text class="dg-t" x="515" y="154" text-anchor="middle" font-size="11.5">TapState</text>
+      <text class="dg-s" x="515" y="169" text-anchor="middle" font-size="9.5">@unchecked Sendable</text>
+
+      <!-- ===== actor inner ===== -->
+      <rect class="dg-accent" x="428" y="244" width="174" height="66" rx="10"/>
+      <text class="dg-t" x="515" y="267" text-anchor="middle" font-size="11">WhisperMLXTranscriber</text>
+      <text class="dg-s" x="515" y="282" text-anchor="middle" font-size="9">cached weights · one at a time</text>
+      <text class="dg-s" x="515" y="296" text-anchor="middle" font-size="9">+ Parakeet · cleanup LLM</text>
+
+      <!-- ===== nonisolated inner ===== -->
+      <rect class="dg-box" x="658" y="82" width="190" height="46" rx="9"/>
+      <text class="dg-t" x="753" y="103" text-anchor="middle" font-size="11">AppleSpeechTranscriber</text>
+      <text class="dg-s" x="753" y="118" text-anchor="middle" font-size="9.5">final class</text>
+
+      <rect class="dg-box" x="658" y="140" width="190" height="46" rx="9"/>
+      <text class="dg-t" x="753" y="161" text-anchor="middle" font-size="11">AppleSpeechSession</text>
+      <text class="dg-s" x="753" y="176" text-anchor="middle" font-size="9.5">emits live partials</text>
+
+      <rect class="dg-box" x="658" y="198" width="190" height="56" rx="9"/>
+      <text class="dg-t" x="753" y="219" text-anchor="middle" font-size="11">WhisperStreamingSession</text>
+      <text class="dg-s" x="753" y="234" text-anchor="middle" font-size="9.5">accumulates PCM ·</text>
+      <text class="dg-mono" x="753" y="247" text-anchor="middle" font-size="9.5">Mutex&lt;[Float]&gt;</text>
+
+      <!-- ===== crossings ===== -->
+      <!-- installs tap (MainActor -> audio) -->
+      <path class="dg-edge" marker-end="url(#ahB)" d="M232,212 C330,212 350,118 426,104"/>
+      <text class="dg-elbl" x="318" y="150" text-anchor="middle" font-size="10.5">installs tap</text>
+      <!-- buffers stream (audio -> MainActor) -->
+      <path class="dg-edge-async" marker-end="url(#ahBa)" d="M410,150 C320,66 286,66 234,108"/>
+      <text class="dg-elbl-a" x="312" y="60" text-anchor="middle" font-size="10.5">buffers ⟿</text>
+      <!-- updates stream (nonisolated -> MainActor) -->
+      <path class="dg-edge-async" marker-end="url(#ahBa)" d="M658,92 C470,24 320,40 234,98"/>
+      <text class="dg-elbl-a" x="452" y="30" text-anchor="middle" font-size="10.5">updates ⟿</text>
+      <!-- feed/finish (MainActor -> nonisolated) -->
+      <path class="dg-edge" marker-end="url(#ahB)" d="M232,150 C430,196 520,168 656,160"/>
+      <text class="dg-elbl" x="452" y="186" text-anchor="middle" font-size="10.5">feed() · finish()</text>
+      <!-- await actor (nonisolated -> actor) -->
+      <path class="dg-edge" marker-end="url(#ahB)" d="M656,232 C628,250 612,270 604,274"/>
+      <text class="dg-elbl" x="515" y="334" text-anchor="middle" font-size="10.5">await transcribePCM()</text>
+
+      <!-- legend -->
+      <line class="dg-edge" x1="200" y1="388" x2="232" y2="388"/>
+      <text class="dg-elbl" x="240" y="392" font-size="10.5">solid = await (cross-domain hop)</text>
+      <line class="dg-edge-async" x1="470" y1="388" x2="502" y2="388"/>
+      <text class="dg-elbl-a" x="510" y="392" font-size="10.5">dashed = AsyncStream (value pipe)</text>
+    </svg>
+    <figcaption>Four isolation domains, and every arrow between them is a boundary the compiler checks. Values only cross as an <code class="inl">await</code> or through an <code class="inl">AsyncStream</code> — which is why the realtime audio thread, the GPU actor, and the UI never race.</figcaption>
+    </figure>
+
+    <div class="note tip">
+      <div class="h">▹ How to read the concurrency, fast</div>
+      <p>Mentally tag each type with its domain: <code class="inl">@MainActor</code> (UI + orchestration), <code class="inl">actor</code> (Whisper model), the <em>audio thread</em> (the tap closure + <code class="inl">TapState</code>). Every arrow between domains is an <code class="inl">await</code> or an <code class="inl">AsyncStream</code>. The compiler already verified the crossings are race-free — so you can trust the boundaries and just follow the data.</p>
+    </div>
+  </section>
+
+  <!-- ===================== SPINE ===================== -->
+  <section id="spine">
+    <h2><span class="num">06</span> The architecture spine: provider abstraction</h2>
+    <p>Here's the load-bearing pattern, stated plainly: <strong>capabilities hide behind protocols; concrete providers are resolved at runtime.</strong> It's used <em>twice</em> now — once for transcription (<code class="inl">Transcriber</code>, three engines) and once for on-device cleanup (<code class="inl">LanguageModel</code>, the "Clean up" feature). If you internalize this section, the file layout makes sense. Here's the whole system on one slide — five layers, each depending only on the one below; the two protocol spines sit in the teal/indigo band:</p>
+
+    <figure class="diagram">
+    <svg viewBox="0 0 880 408" role="img" aria-label="Layered architecture map of Relay Notes">
+      <defs>
+        <marker id="ahA" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#6b7890"/></marker>
+      </defs>
+
+      <text class="dg-s" x="58" y="15" font-size="9.5" text-anchor="middle">uses ↓</text>
+      <path class="dg-edge" marker-end="url(#ahA)" d="M92,82 L92,95"/>
+      <path class="dg-edge" marker-end="url(#ahA)" d="M92,158 L92,171"/>
+      <path class="dg-edge" marker-end="url(#ahA)" d="M92,234 L92,247"/>
+      <path class="dg-edge" marker-end="url(#ahA)" d="M92,310 L92,323"/>
+
+      <!-- band 1: UI -->
+      <text class="dg-t" x="14" y="47" font-size="12.5">UI</text>
+      <text class="dg-s" x="14" y="62" font-size="10">SwiftUI</text>
+      <g font-size="11" text-anchor="middle">
+        <rect class="dg-box" x="168" y="24" width="127" height="54" rx="9"/><text class="dg-t" x="231" y="55">ContentView</text>
+        <rect class="dg-box" x="307" y="24" width="127" height="54" rx="9"/><text class="dg-t" x="370" y="55">NotesListView</text>
+        <rect class="dg-box" x="446" y="24" width="127" height="54" rx="9"/><text class="dg-t" x="509" y="55">RecorderView</text>
+        <rect class="dg-box" x="585" y="24" width="127" height="54" rx="9"/><text class="dg-t" x="648" y="55">NoteDetailView</text>
+        <rect class="dg-box" x="724" y="24" width="127" height="54" rx="9"/><text class="dg-t" x="787" y="55">SettingsView</text>
+      </g>
+
+      <!-- band 2: orchestration (4 up) -->
+      <text class="dg-t" x="14" y="123" font-size="12.5">Orchestration</text>
+      <text class="dg-s" x="14" y="138" font-size="10">@MainActor</text>
+      <g text-anchor="middle">
+        <rect class="dg-indigo" x="168" y="100" width="163" height="54" rx="9"/>
+        <text class="dg-t" x="249" y="122" font-size="11">RecorderViewModel</text>
+        <text class="dg-s" x="249" y="137" font-size="9">state machine + tasks</text>
+        <rect class="dg-box" x="341" y="100" width="163" height="54" rx="9"/>
+        <text class="dg-t" x="422" y="122" font-size="11.5">Tunings</text>
+        <text class="dg-s" x="422" y="137" font-size="9">@Observable</text>
+        <rect class="dg-box" x="514" y="100" width="163" height="54" rx="9"/>
+        <text class="dg-t" x="595" y="122" font-size="11.5">ReTranscriber</text>
+        <text class="dg-s" x="595" y="137" font-size="9">re-run another engine</text>
+        <rect class="dg-indigo" x="687" y="100" width="163" height="54" rx="9"/>
+        <text class="dg-t" x="768" y="122" font-size="11.5">Cleaner</text>
+        <text class="dg-s" x="768" y="137" font-size="9">drives "Clean up"</text>
+      </g>
+
+      <!-- band 3: the two spines (6 up) -->
+      <text class="dg-dom-t" x="14" y="195" font-size="12.5">The spines</text>
+      <text class="dg-s" x="14" y="210" font-size="10">protocols + DI</text>
+      <g text-anchor="middle" font-size="9.5">
+        <rect class="dg-accent" x="168" y="176" width="105" height="54" rx="9"/><text class="dg-t" x="220" y="199">Transcriber</text><text class="dg-s" x="220" y="213">protocol</text>
+        <rect class="dg-accent" x="282" y="176" width="105" height="54" rx="9"/><text class="dg-t" x="334" y="196">Transcription-</text><text class="dg-t" x="334" y="208">Session</text>
+        <rect class="dg-accent" x="396" y="176" width="105" height="54" rx="9"/><text class="dg-t" x="448" y="196">Transcription-</text><text class="dg-t" x="448" y="208">Options</text>
+        <rect class="dg-accent" x="510" y="176" width="105" height="54" rx="9"/><text class="dg-t" x="562" y="196">Transcriber-</text><text class="dg-t" x="562" y="208">Factory</text>
+        <rect class="dg-accent" x="624" y="176" width="105" height="54" rx="9"/><text class="dg-t" x="676" y="199">ModelStores</text><text class="dg-s" x="676" y="213">registry</text>
+        <rect class="dg-indigo" x="738" y="176" width="105" height="54" rx="9"/><text class="dg-t" x="790" y="199">LanguageModel</text><text class="dg-s" x="790" y="213">cleanup spine</text>
+      </g>
+
+      <!-- band 4: providers (6 up) -->
+      <text class="dg-t" x="14" y="275" font-size="12.5">Providers</text>
+      <text class="dg-s" x="14" y="290" font-size="10">&amp; capability</text>
+      <g text-anchor="middle">
+        <rect class="dg-box" x="168" y="252" width="105" height="54" rx="9"/><text class="dg-t" x="220" y="272" font-size="9.5">AppleSpeech-</text><text class="dg-t" x="220" y="284" font-size="9.5">Transcriber</text><text class="dg-s" x="220" y="299" font-size="8.5">class</text>
+        <rect class="dg-accent" x="282" y="252" width="105" height="54" rx="9"/><text class="dg-t" x="334" y="272" font-size="9.5">WhisperMLX-</text><text class="dg-t" x="334" y="284" font-size="9.5">Transcriber</text><text class="dg-s" x="334" y="299" font-size="8.5">actor</text>
+        <rect class="dg-accent" x="396" y="252" width="105" height="54" rx="9"/><text class="dg-t" x="448" y="272" font-size="9.5">ParakeetMLX-</text><text class="dg-t" x="448" y="284" font-size="9.5">Transcriber</text><text class="dg-s" x="448" y="299" font-size="8.5">actor</text>
+        <rect class="dg-indigo" x="510" y="252" width="105" height="54" rx="9"/><text class="dg-t" x="562" y="272" font-size="9.5">MLXLanguage-</text><text class="dg-t" x="562" y="284" font-size="9.5">Model</text><text class="dg-s" x="562" y="299" font-size="8.5">actor</text>
+        <rect class="dg-box" x="624" y="252" width="105" height="54" rx="9"/><text class="dg-t" x="676" y="272" font-size="9.5">LiveAudio-</text><text class="dg-t" x="676" y="284" font-size="9.5">Engine</text><text class="dg-s" x="676" y="299" font-size="8.5">@MainActor</text>
+        <rect class="dg-box" x="738" y="252" width="105" height="54" rx="9"/><text class="dg-t" x="790" y="280" font-size="10.5">Note</text><text class="dg-s" x="790" y="295" font-size="8.5">@Model</text>
+      </g>
+
+      <!-- band 5: frameworks (5 up) -->
+      <text class="dg-t" x="14" y="352" font-size="12.5">Frameworks</text>
+      <g text-anchor="middle" font-size="10.5">
+        <rect class="dg-band" x="168" y="330" width="124" height="40" rx="9"/><text class="dg-s" x="230" y="354">Speech</text>
+        <rect class="dg-band" x="306" y="330" width="124" height="40" rx="9"/><text class="dg-s" x="368" y="354">AVFoundation</text>
+        <rect class="dg-band" x="444" y="330" width="124" height="40" rx="9"/><text class="dg-s" x="506" y="354">mlx-swift</text>
+        <rect class="dg-band" x="582" y="330" width="124" height="40" rx="9"/><text class="dg-s" x="644" y="354">mlx-swift-lm</text>
+        <rect class="dg-band" x="720" y="330" width="124" height="40" rx="9"/><text class="dg-s" x="782" y="354">SwiftData</text>
+      </g>
+    </svg>
+    <figcaption><strong>Two protocol spines live in the band-3 seam:</strong> transcription (teal — <code class="inl">Transcriber</code> &amp; friends) and cleanup (indigo — <code class="inl">LanguageModel</code>). Everything above talks only to those protocols; the provider row holds the swappable implementations (the three teal/indigo provider boxes are the MLX actors). Add a capability = add a box, not a refactor.</figcaption>
+    </figure>
+
+    <h3>The contract has two methods, both on purpose</h3>
+    <pre><code class="swift">nonisolated protocol Transcriber: Sendable {
+    // File-based. UNUSED by the app today — kept for the future cloud-STT
+    // providers (which work on uploaded files) and a "re-transcribe" action.
+    func transcribe(_ audio: URL, options: TranscriptionOptions) async throws -> String
+
+    // Streaming. This is what the recorder actually uses: it returns a session
+    // that the audio engine feeds buffers into.
+    func makeStreamingSession(options: TranscriptionOptions) async throws -> any TranscriptionSession
+}</code></pre>
+    <div class="note warn">
+      <div class="h">⚑ Don't "clean up" the unused method</div>
+      <p>The file-based <code class="inl">transcribe(_:options:)</code> looks like dead code — the app only calls the streaming path. It's deliberately retained for cloud STT (which operates on uploaded files) and a future re-transcribe action. This is the kind of intent that lives in comments and the planning docs, not in the call graph. Read before deleting.</p>
+    </div>
+
+    <h3>A session is the live handle</h3>
+    <p>The streaming method hands back a <code class="inl">TranscriptionSession</code> — the object the audio engine pushes buffers into and reads results out of. Crucially, the <em>session</em> is the authority on its own behavior, so the recorder doesn't branch on engine type:</p>
+    <pre><code class="swift">nonisolated protocol TranscriptionSession: Sendable, AnyObject {
+    var audioFormat: AVAudioFormat? { get }     // the PCM format it wants
+    var updates: AsyncStream&lt;String&gt; { get }     // live partial transcripts
+    var emitsLivePartials: Bool { get }          // Apple: true · Whisper: false
+    var modelDescription: String { get }         // provenance, saved on the Note
+    func feed(_ buffer: AVAudioPCMBuffer)        // push mic audio in
+    func finish() async throws -> String         // stop, return final transcript
+    func cancel() async
+}</code></pre>
+    <p><code class="inl">emitsLivePartials</code> is a nice example of pushing a decision to the type that owns the knowledge: the recorder asks the session "do you stream?" rather than inferring it from an engine enum — so adding an engine doesn't mean editing the recorder.</p>
+
+    <h3>Resolving the provider: the factory</h3>
+    <p>A small factory maps the selected engine to a cached concrete instance — with a twist that matters on a memory-constrained phone: it keeps <strong>at most one MLX engine resident at a time</strong>. Whisper (~0.5&nbsp;GB) and Parakeet (~1.2&nbsp;GB) are never used simultaneously, so switching to a different MLX engine evicts the previous model's weights before loading the next. Apple Speech holds no such state, so it's cached independently:</p>
+    <pre><code class="swift">@MainActor
+final class TranscriberFactory {
+    private var appleSpeech: AppleSpeechTranscriber?              // cheap, cached on its own
+    private var liveMLX: (engine: TranscriptionEngine,           // at most ONE MLX engine live
+                          transcriber: any Transcriber)?
+
+    func transcriber(for engine: TranscriptionEngine) -> any Transcriber {
+        switch engine {
+        case .apple:       return appleSpeech ?? makeApple()
+        case .whisperMLX:  return liveMLXTranscriber(for: engine) { WhisperMLXTranscriber(store: stores?.whisper) }
+        case .parakeetMLX: return liveMLXTranscriber(for: engine) { ParakeetMLXTranscriber(store: stores?.parakeet) }
+        }
+    }
+
+    private func liveMLXTranscriber(for engine: TranscriptionEngine, _ make: () -> any Transcriber) -> any Transcriber {
+        if let liveMLX, liveMLX.engine == engine { return liveMLX.transcriber }
+        liveMLX = nil               // drop the old model (the factory's only strong ref) → its ~GB of weights free
+        let new = make(); liveMLX = (engine, new); return new
+    }
+}</code></pre>
+    <p>Where the weights live on disk is the job of the <code class="inl">ModelStores</code> registry — one place that maps each engine to its <code class="inl">DownloadableModelStore</code> and answers "is this engine ready?" (Apple is always ready; an MLX engine only once its model is downloaded). That's what gates engine selection in Settings and reconciles a stale saved choice at launch.</p>
+
+    <p>Put together, the socket looks like this — three live providers (plus a cloud slot reserved), one interface, the choice deferred to runtime:</p>
+    <div class="flow">
+      <div class="stage" style="border-color:rgba(47,212,192,.4)"><div class="ic">🍎</div><b>AppleSpeech<br>Transcriber</b><span>default · shipping</span></div>
+      <div class="stage"><div class="ic">🧠</div><b>WhisperMLX<br>Transcriber</b><span>on-device · shipping</span></div>
+      <div class="stage"><div class="ic">🦜</div><b>ParakeetMLX<br>Transcriber</b><span>on-device · shipping</span></div>
+      <div class="stage" style="opacity:.55"><div class="ic">☁️</div><b>Cloud<br>Transcriber</b><span>opt-in · not built</span></div>
+      <div class="arr">›</div>
+      <div class="stage" style="background:var(--grad-soft);border-color:var(--teal-bright)"><div class="ic">🔌</div><b><code style="font-size:13px">any Transcriber</code></b><span>the socket</span></div>
+    </div>
+
+    <h3>The spine, proven twice: <code class="inl">LanguageModel</code></h3>
+    <p>The strongest evidence that the abstraction earns its keep: when the team wanted on-device transcript <em>cleanup</em> (de-filler, punctuation, light structure via a local LLM), they didn't bolt it onto the transcriber — they stamped out a <strong>second, identical spine</strong>. Same isolation rules, same actor-for-GPU-state pattern, same swap-the-provider-at-runtime promise:</p>
+    <pre><code class="swift">nonisolated protocol LanguageModel: Sendable {
+    func clean(_ raw: String) async throws -> String
+    // L3 adds `categorize(_:into:)` additively — designed in now, not a reshape.
+}
+
+// The MLX conformer is an actor, exactly like the transcribers — it caches a
+// non-Sendable, GPU-bound ModelContainer (Gemma 4 E2B, 4-bit) across calls.
+actor MLXLanguageModel: LanguageModel {
+    func clean(_ raw: String) async throws -> String {
+        let session = ChatSession(container, instructions: CleanupPrompt.system,
+                                  generateParameters: .init(temperature: 0))  // greedy: must not invent
+        return try await session.respond(to: raw)
+    }
+    func evict() { container = nil; MLX.GPU.clearCache() }   // same "one live model" discipline
+}</code></pre>
+    <p>The orchestrator mirrors <code class="inl">ReTranscriber</code> too: <code class="inl">Cleaner</code> (a <code class="inl">@MainActor @Observable</code>) gates the "Clean up" button on the model being downloaded, runs <code class="inl">clean()</code> off a saved note, and hands back a <strong>non-destructive</strong> candidate the user accepts or declines. Accepting writes a <em>separate</em> field — the raw transcript is never overwritten (more in §08). The prompt lives in one place (<code class="inl">CleanupPrompt</code>) so swapping the model never changes behavior.</p>
+    <div class="note info">
+      <div class="h">◆ Why this is worth the ceremony — now demonstrably</div>
+      <p>The point was always to validate "on-device, your-choice model" without betting the app on one vendor. Because each seam is a protocol, a new engine is a new <em>file</em>, not a refactor — and that claim is no longer theoretical: the cleanup feature dropped an entire <em>second</em> capability into the same shape, reusing the same actor-isolation and single-live-model patterns. The abstraction pays for itself with three live transcription engines <em>and</em> an on-device LLM.</p>
+    </div>
+  </section>
+
+  <!-- ===================== DATAFLOW ===================== -->
+  <section id="dataflow">
+    <h2><span class="num">07</span> Tap → speak → saved: the whole path</h2>
+    <p class="lead">This is the payoff. Here's one recording, traced end-to-end through the real types. Every concept above shows up doing a job.</p>
+
+    <figure class="diagram">
+    <svg viewBox="0 0 880 498" role="img" aria-label="Runtime sequence: tap to speak to saved note">
+      <defs>
+        <marker id="ahC" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6b7890"/></marker>
+        <marker id="ahCa" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2fd4c0"/></marker>
+      </defs>
+
+      <!-- lifelines -->
+      <g stroke="#2b3950" stroke-width="1.3" stroke-dasharray="3 5">
+        <line x1="76" y1="64" x2="76" y2="476"/>
+        <line x1="258" y1="64" x2="258" y2="476"/>
+        <line x1="446" y1="64" x2="446" y2="476"/>
+        <line x1="632" y1="64" x2="632" y2="476"/>
+        <line x1="793" y1="64" x2="793" y2="476"/>
+      </g>
+
+      <!-- lane headers -->
+      <rect class="dg-box" x="24" y="18" width="104" height="46" rx="9"/>
+      <text class="dg-t" x="76" y="46" text-anchor="middle" font-size="12">You</text>
+      <rect class="dg-indigo" x="170" y="18" width="176" height="46" rx="9"/>
+      <text class="dg-t" x="258" y="39" text-anchor="middle" font-size="11.5">RecorderView / VM</text>
+      <text class="dg-s" x="258" y="54" text-anchor="middle" font-size="9.5">@MainActor</text>
+      <rect class="dg-box" x="366" y="18" width="160" height="46" rx="9"/>
+      <text class="dg-t" x="446" y="39" text-anchor="middle" font-size="11.5">LiveAudioEngine</text>
+      <text class="dg-s" x="446" y="54" text-anchor="middle" font-size="9.5">+ audio thread</text>
+      <rect class="dg-box" x="550" y="18" width="164" height="46" rx="9"/>
+      <text class="dg-t" x="632" y="44" text-anchor="middle" font-size="11">TranscriptionSession</text>
+      <rect class="dg-box" x="730" y="18" width="126" height="46" rx="9"/>
+      <text class="dg-t" x="793" y="39" text-anchor="middle" font-size="11.5">SwiftData</text>
+      <text class="dg-s" x="793" y="54" text-anchor="middle" font-size="9.5">@Query</text>
+
+      <!-- loop frame -->
+      <rect x="196" y="198" width="520" height="128" rx="8" fill="rgba(27,181,164,.05)" stroke="#33425a" stroke-width="1.2" stroke-dasharray="5 4"/>
+      <path d="M196,198 h120 v20 h-110 l-10,-10 z" fill="#16202c" stroke="#33425a" stroke-width="1.2"/>
+      <text class="dg-dom-t" x="206" y="212" font-size="10">loop · while recording</text>
+
+      <!-- messages -->
+      <g font-size="10.5">
+        <path class="dg-edge" marker-end="url(#ahC)" d="M76,92 L256,92"/>
+        <text class="dg-elbl" x="166" y="86" text-anchor="middle">tap ● record</text>
+
+        <path class="dg-edge" marker-end="url(#ahC)" d="M258,120 L630,120"/>
+        <text class="dg-elbl" x="444" y="114" text-anchor="middle">makeStreamingSession(options)</text>
+
+        <path class="dg-edge" marker-end="url(#ahC)" d="M258,148 L444,148"/>
+        <text class="dg-elbl" x="352" y="142" text-anchor="middle">engine.start(analyzerFormat)</text>
+
+        <path class="dg-edge" marker-end="url(#ahC)" d="M446,176 L260,176"/>
+        <text class="dg-elbl" x="352" y="170" text-anchor="middle">↩ LiveRecording { buffers, interruptions }</text>
+
+        <!-- loop body -->
+        <path class="dg-edge-async" marker-end="url(#ahCa)" d="M446,226 L260,226"/>
+        <text class="dg-elbl-a" x="354" y="220" text-anchor="middle">buffers ⟿ (each chunk)</text>
+
+        <path class="dg-edge" marker-end="url(#ahC)" d="M258,254 L630,254"/>
+        <text class="dg-elbl" x="444" y="248" text-anchor="middle">session.feed(buffer)</text>
+
+        <path class="dg-edge-async" marker-end="url(#ahCa)" d="M632,282 L260,282"/>
+        <text class="dg-elbl-a" x="446" y="276" text-anchor="middle">updates ⟿ partial transcript</text>
+
+        <rect class="dg-indigo" x="178" y="300" width="160" height="18" rx="5"/>
+        <text class="dg-mono" x="258" y="313" text-anchor="middle" font-size="9">state = .recording(partial)</text>
+
+        <!-- stop + finalize -->
+        <path class="dg-edge" marker-end="url(#ahC)" d="M76,352 L256,352"/>
+        <text class="dg-elbl" x="166" y="346" text-anchor="middle">tap ◼ stop</text>
+
+        <path class="dg-edge" marker-end="url(#ahC)" d="M258,380 L444,380"/>
+        <text class="dg-elbl" x="352" y="374" text-anchor="middle">engine.stop()</text>
+
+        <path class="dg-edge" marker-end="url(#ahC)" d="M258,408 L630,408"/>
+        <text class="dg-elbl" x="444" y="402" text-anchor="middle">session.finish() → transcript</text>
+
+        <path class="dg-edge" marker-end="url(#ahC)" d="M258,436 L791,436"/>
+        <text class="dg-elbl" x="520" y="430" text-anchor="middle">insert + save Note</text>
+
+        <path class="dg-edge-async" marker-end="url(#ahCa)" d="M793,462 L260,462"/>
+        <text class="dg-elbl-a" x="520" y="456" text-anchor="middle">@Query re-renders the list automatically</text>
+      </g>
+    </svg>
+    <figcaption>Time flows downward. Solid = a direct call; dashed teal = an <code class="inl">AsyncStream</code> delivering values over time. The loop is the live phase; the bottom four messages are stop → decode → persist → the list updating itself. The six numbered steps below narrate this same picture.</figcaption>
+    </figure>
+
+    <div class="steps">
+      <div class="step">
+        <h4>The tap: build the session, start the engine</h4>
+        <p class="file">Recording/RecorderViewModel.swift → startRecording()</p>
+        <p>The view model reads a <strong>snapshot</strong> of the user's tunings (engine, preset, bitrate) at this instant — mid-recording setting changes intentionally don't take effect until next time. It asks the factory for the right <code class="inl">Transcriber</code>, makes a streaming session, then starts the audio engine, handing it the session's preferred <code class="inl">audioFormat</code> so capture and recognition agree on a PCM format.</p>
+        <pre style="margin-top:8px"><code class="swift">let transcriber = transcriberFactory.transcriber(for: tunings.engine)
+let session = try await transcriber.makeStreamingSession(options: tunings.transcriptionOptions)
+let recording = try await engine.start(options: tunings.recordingOptions,
+                                       analyzerFormat: session.audioFormat)</code></pre>
+      </div>
+
+      <div class="step">
+        <h4>Capture does double duty on every buffer</h4>
+        <p class="file">Audio/LiveAudioEngine.swift → installTap + TapState.handle</p>
+        <p>An input tap on <code class="inl">AVAudioEngine</code> fires on the realtime audio thread for each chunk of mic audio. For every buffer it (a) <strong>writes AAC/m4a to disk</strong> for later playback, and (b) <strong>converts the PCM</strong> to the analyzer's format and <code class="inl">yield</code>s it into an <code class="inl">AsyncStream</code>. That's why the saved audio and the transcript come from one capture, not two.</p>
+        <pre style="margin-top:8px"><code class="swift">func handle(buffer: AVAudioPCMBuffer) {
+    try? audioFile.write(from: buffer)              // (a) persist for playback
+    // (b) convert to the analyzer's format, then:
+    continuation.yield(outBuffer)                   // → into LiveRecording.buffers
+}</code></pre>
+        <div class="note gotcha" style="margin-top:10px">
+          <div class="h">⚠ Audio-thread reality</div>
+          <p>The tap closure runs on a realtime thread that must never block. It holds a <code class="inl">@unchecked Sendable</code> <code class="inl">TapState</code> (single-threaded by construction) — this is exactly the case where you assert thread-safety to the compiler because the runtime contract guarantees it but the type system can't see it.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <h4>Three concurrent tasks consume the streams</h4>
+        <p class="file">RecorderViewModel.startRecording()</p>
+        <p>The view model spins up structured tasks, one per stream: <strong>feed</strong> (push buffers into the session + compute a mic level), <strong>updates</strong> (live partial transcript → state), and <strong>interruptions</strong> (call/Siri/alarm → pause/resume/finalize). The state flips to <code class="inl">.recording(partial: "")</code> and the UI comes alive.</p>
+        <pre style="margin-top:8px"><code class="swift">feedTask = Task { [session] in
+    for await buffer in recording.buffers { session.feed(buffer); … }
+}
+updatesTask = Task { for await partial in session.updates { … } }      // live text
+interruptionTask = Task { for await e in recording.interruptions { … } } // pause/resume
+state = .recording(partial: "")</code></pre>
+      </div>
+
+      <div class="step">
+        <h4>Live transcript streams to the screen (Apple) — or a meter does (Whisper)</h4>
+        <p class="file">AppleSpeechTranscriber.swift / WhisperStreamingSession.swift</p>
+        <p>With Apple Speech, each recognizer result (volatile or final) is folded into a growing string and <code class="inl">yield</code>ed on <code class="inl">updates</code> — you watch the words appear. With Whisper there are no partials by design (<code class="inl">emitsLivePartials = false</code>); it just accumulates PCM in memory, so the UI shows a live <strong>audio-level meter + elapsed timer</strong> placeholder instead of a blank card.</p>
+      </div>
+
+      <div class="step">
+        <h4>Stop: finalize and get the transcript</h4>
+        <p class="file">RecorderViewModel.stopAndTranscribe()</p>
+        <p>State → <code class="inl">.finalizing</code>. The engine stops (closing the audio file), the feed/interruption tasks cancel, then <code class="inl">session.finish()</code> returns the final transcript. For Apple that drains the last results; for Whisper that's where the <em>entire</em> decode happens — a 5-minute note sits ~80&nbsp;s on the spinner. Same interface, very different cost profile, hidden behind <code class="inl">finish()</code>.</p>
+        <pre style="margin-top:8px"><code class="swift">state = .finalizing
+let url = await engine.stop()
+let transcript = try await session.finish()        // Apple: drain · Whisper: decode now</code></pre>
+      </div>
+
+      <div class="step">
+        <h4>Persist the note</h4>
+        <p class="file">Models/Note.swift + ModelContext</p>
+        <p>A <code class="inl">Note</code> is created — storing the audio <strong>filename</strong> (not a URL), the transcript, and the engine's <code class="inl">modelDescription</code> as provenance — inserted into the SwiftData context and saved. Because the notes list is a live <code class="inl">@Query</code>, the new row <strong>appears in the UI automatically</strong>. State → <code class="inl">.finished</code>. Done.</p>
+        <pre style="margin-top:8px"><code class="swift">let note = Note(audioFilename: url.lastPathComponent,
+                transcript: transcript,
+                transcriptionModel: session.modelDescription)
+modelContext.insert(note)
+try modelContext.save()
+state = .finished(transcript: transcript)</code></pre>
+      </div>
+    </div>
+    <div class="note tip">
+      <div class="h">▹ Step back and notice</div>
+      <p>The recorder never names "Apple" or "Whisper." It talks to a <code class="inl">Transcriber</code> and a <code class="inl">TranscriptionSession</code>, asks them what they can do (<code class="inl">emitsLivePartials</code>, <code class="inl">audioFormat</code>, <code class="inl">modelDescription</code>), and lets the streams carry the data. <em>That's</em> the spine doing its job — orchestration with zero engine-specific branches.</p>
+    </div>
+  </section>
+
+  <!-- ===================== PERSISTENCE ===================== -->
+  <section id="persistence">
+    <h2><span class="num">08</span> Persistence: SwiftData in one page</h2>
+    <p>SwiftData is Apple's modern ORM (a type-safe wrapper over Core Data). If you've used Prisma, Room, or ActiveRecord, you already know the shape — three pieces:</p>
+    <div class="grid g3">
+      <div class="card"><h4>@Model = entity</h4><p style="margin:0;font-size:14px;color:var(--text-soft)">A macro on a class that makes its stored properties persistent columns. <code class="inl">Note</code> is the only model.</p></div>
+      <div class="card"><h4>ModelContext = session</h4><p style="margin:0;font-size:14px;color:var(--text-soft)">The unit of work: <code class="inl">insert</code>, <code class="inl">delete</code>, <code class="inl">save</code>. Injected via <code class="inl">@Environment</code>.</p></div>
+      <div class="card"><h4>@Query = live fetch</h4><p style="margin:0;font-size:14px;color:var(--text-soft)">A reactive result set. The list view re-renders when rows change — no manual refresh.</p></div>
+    </div>
+
+    <pre><code class="swift">@Model
+final class Note {
+    var id: UUID
+    var createdAt: Date
+    var audioFilename: String      // ← filename, NOT a URL (see below)
+    var transcript: String         // the canonical RAW text — never overwritten
+    var title: String?
+    var transcriptionModel: String?    // provenance: "Apple Speech" / "Whisper (small.en)"
+    var originalTranscript: String?    // pre-edit baseline, enables revert
+    var cleanedTranscript: String?     // LLM-cleaned version (non-destructive); nil = never cleaned
+    var cleanupModel: String?          // provenance: "Gemma 4 E2B (MLX 4-bit)"
+}</code></pre>
+
+    <p>The container is wired up once, at the app's entry point — that's all it takes to get a working store:</p>
+    <pre><code class="swift">@main
+struct Relay_NotesApp: App {
+    var body: some Scene {
+        WindowGroup { ContentView() }
+            .modelContainer(for: Note.self)     // creates/opens the SQLite store
+    }
+}</code></pre>
+
+    <div class="note gotcha">
+      <div class="h">⚠ Store the filename, never the URL</div>
+      <p>The app's container path can change between launches, so a persisted absolute <code class="inl">URL</code> goes stale. The note stores <code class="inl">audioFilename</code> and resolves it against the documents directory <em>at access time</em>:</p>
+      <pre style="margin:10px 0 0"><code class="swift">var audioURL: URL { URL.documentsDirectory.appending(path: audioFilename) }</code></pre>
+    </div>
+    <div class="note warn">
+      <div class="h">⚑ One canonical delete</div>
+      <p>A note has two artifacts: the SwiftData row <em>and</em> an audio file on disk. Deleting the row alone orphans the file. So there's exactly one approved delete, used everywhere:</p>
+      <pre style="margin:10px 0 0"><code class="swift">func deleteWithAudio(in context: ModelContext) {
+    try? FileManager.default.removeItem(at: audioURL)   // file
+    context.delete(self); try? context.save()           // row
+}</code></pre>
+    </div>
+    <div class="note info">
+      <div class="h">◆ Additive &amp; non-destructive by design</div>
+      <p>Notice the optional-by-default fields. Both edit (<code class="inl">originalTranscript</code>) and cleanup (<code class="inl">cleanedTranscript</code>/<code class="inl">cleanupModel</code>) were added <em>after</em> notes already existed — as <code class="inl">nil</code>-defaulting optionals, which SwiftData migrates for free (no migration plan, no backfill). And both are <strong>non-destructive</strong>: the raw <code class="inl">transcript</code> is always the source of truth, so an LLM cleanup can be accepted, toggled, or removed without ever losing what was actually said. That's a deliberate stance — an LLM "improving" a note by inventing detail is worse than a messy-but-true one.</p>
+    </div>
+  </section>
+
+  <!-- ===================== ENGINES ===================== -->
+  <section id="engines">
+    <h2><span class="num">09</span> Three engines, one socket</h2>
+    <p>The same <code class="inl">TranscriptionSession</code> interface backs three genuinely different implementations. Comparing them is the clearest illustration of why the abstraction earns its keep:</p>
+    <table>
+      <tr><th></th><th>Apple Speech</th><th>Whisper (MLX)</th><th>Parakeet (MLX)</th></tr>
+      <tr><td><b>Role</b></td><td><b>Permanent default</b></td><td>opt-in upgrade</td><td>opt-in upgrade</td></tr>
+      <tr><td><b>Framework</b></td><td><code>SpeechAnalyzer</code></td><td><code>mlx-swift</code>, hand-ported</td><td><code>mlx-swift</code>, hand-ported</td></tr>
+      <tr><td><b>Model</b></td><td>Apple's, no choice</td><td><code>whisper-small.en</code> · 481&nbsp;MB</td><td><code>parakeet-tdt-0.6b-v2</code> · ~2.4&nbsp;GB</td></tr>
+      <tr><td><b>Install</b></td><td>Nothing to download</td><td>Download on first use</td><td>Download on first use</td></tr>
+      <tr><td><b>Live partials</b></td><td><b>Yes</b> — stream as you talk</td><td><b>No</b> — decode at <code>finish()</code></td><td><b>No</b> — decode at <code>finish()</code></td></tr>
+      <tr><td><b>Concurrency type</b></td><td><code>nonisolated class</code></td><td><code>actor</code></td><td><code>actor</code></td></tr>
+      <tr><td><b>While recording, UI…</b></td><td>live transcript card</td><td>meter + timer placeholder</td><td>meter + timer placeholder</td></tr>
+    </table>
+    <p>And there's a fourth MLX actor that isn't a transcriber at all — <code class="inl">MLXLanguageModel</code> (Gemma 4 E2B, the cleanup model from §06). The factory's "one live MLX model at a time" rule spans all of them: Whisper, Parakeet, and the cleanup LLM are never co-resident on the 8&nbsp;GB device.</p>
+
+    <h3>Why the MLX engines are <code class="inl">actor</code>s and Apple is a <code class="inl">class</code></h3>
+    <p>This is the concurrency model paying rent. Each MLX engine caches hundreds of MB to GBs of non-<code class="inl">Sendable</code> model state and is GPU-bound — serializing access through an actor is both correct (no races on the cache) and desirable (decodes shouldn't overlap on one GPU). Apple's transcriber holds no such shared state, so a plain <code class="inl">nonisolated</code> class is enough. <strong>Same protocol, different isolation, chosen per-conformer</strong> — exactly the freedom the <code class="inl">nonisolated protocol</code> from §05 preserves, and the reason adding Parakeet (and later the cleanup LLM) didn't perturb anything above the provider layer.</p>
+
+    <div class="note info">
+      <div class="h">◆ The product stance behind the engineering</div>
+      <p>Two axes are kept independent on purpose: <em>where it runs</em> (on-device vs cloud) and <em>whose model</em> (Apple's vs your choice). Apple Speech is on-device-Apple and the <strong>settled default</strong> — it works the instant the app installs, with no download. Whisper and Parakeet are on-device-yours, opt-in upgrades. The current bet is notable: rather than chase a more accurate transcriber, <strong>mitigate transcription errors with the on-device cleanup LLM</strong> — which is exactly why the second <code class="inl">LanguageModel</code> spine exists. Everything stays <strong>local-first, cloud opt-in only</strong>: the app is 100% functional in airplane mode. The protocols are what keep every corner reachable without forking the app.</p>
+    </div>
+  </section>
+
+  <!-- ===================== iOS REALITIES ===================== -->
+  <section id="ios">
+    <h2><span class="num">10</span> iOS realities you won't hit elsewhere</h2>
+    <p>Platform friction that has nothing to do with the architecture but everything to do with shipping an iPhone app as a newcomer:</p>
+
+    <div class="grid g2">
+      <div class="card">
+        <h4>Permissions are async dialogs</h4>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)">Mic and speech access each trigger a one-time system prompt you must <code class="inl">await</code>, and the human-readable reason strings live in <code class="inl">Info.plist</code>. The recorder handles denial as a first-class failure state with an actionable message.</p>
+      </div>
+      <div class="card">
+        <h4>The audio session is global, shared state</h4>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)"><code class="inl">AVAudioSession</code> is a singleton you configure (<code class="inl">.playAndRecord</code>) and that the OS can yank away mid-recording. Calls, Siri, and alarms arrive as interruption notifications — handled here as a <code class="inl">.began → .paused</code>, <code class="inl">.resumed → .recording</code>, <code class="inl">.stopped → auto-finalize</code> flow.</p>
+      </div>
+      <div class="card">
+        <h4>Background recording needs an entitlement</h4>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)">Locked-screen capture requires <code class="inl">UIBackgroundModes = [audio]</code>, which Xcode can't auto-generate — hence a hand-maintained <em>partial</em> <code class="inl">Info.plist</code>. Don't delete it (it merges on top of the generated one).</p>
+      </div>
+      <div class="card">
+        <h4>The simulator can't run MLX</h4>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)">The simulator's GPU lacks the family MLX needs, so any MLX test would crash the whole suite. Those tests are compiled but skipped via <code class="inl">#if !targetEnvironment(simulator)</code>; on-device math is validated by a DEBUG "smoke" button instead.</p>
+      </div>
+      <div class="card">
+        <h4>Free-tier signing expires every 7 days</h4>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)">Sideloading on a free Apple ID means the app stops launching after a week — re-build from Xcode to re-sign. Data (SwiftData rows + audio files) survives because the bundle ID is stable. The paid Developer Program is still deferred — sideload covers the personal-device use case.</p>
+      </div>
+      <div class="card">
+        <h4>The 4-bit LLM needs the memory entitlement</h4>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)">The cleanup model's generation peak crosses iOS's ~3&nbsp;GB jetsam ceiling, so the app ships <code class="inl">com.apple.developer.kernel.increased-memory-limit</code> (in <code class="inl">Relay Notes.entitlements</code>). The pleasant surprise: the <strong>free Apple ID tier accepts it</strong> — no paid program needed. The ASR engines (Whisper/Parakeet) stay under the ceiling and don't require it.</p>
+      </div>
+      <div class="card">
+        <h4>The project file is generated, edit it with care</h4>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)"><code class="inl">project.pbxproj</code> is a fussy machine file. The project uses Xcode's file-system-synchronized groups; adding files/targets is done via the <code class="inl">xcodeproj</code> Ruby gem, not by hand, and validated on a <code class="inl">/tmp</code> copy first.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== TOOLING ===================== -->
+  <section id="tooling">
+    <h2><span class="num">11</span> Build &amp; tooling, the short version</h2>
+    <p>Day-to-day is a terminal loop (Xcode stays open in the background for signing, previews, and Instruments). The two commands you'll run most:</p>
+    <pre><code class="bash"># Run the full test suite in the simulator (the command you'll use most)
+xcodebuild test -project "Relay Notes.xcodeproj" -scheme "Relay Notes" \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' 2>&amp;1 | xcbeautify
+
+# Build only — faster sanity check
+xcodebuild build -project "Relay Notes.xcodeproj" -scheme "Relay Notes" \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' 2>&amp;1 | xcbeautify</code></pre>
+    <ul class="clean">
+      <li>The <strong>quotes matter</strong> — both the project name and scheme contain a space.</li>
+      <li>Pipe through <code class="inl">xcbeautify</code>; raw <code class="inl">xcodebuild</code> output buries the actual errors.</li>
+      <li>Tests use Swift's <strong>Testing</strong> framework (<code class="inl">import Testing</code>, <code class="inl">@Test</code>, <code class="inl">#expect</code>) — closer to modern JS/Rust test ergonomics than XCTest. ~150 tests; the MLX numerics (Whisper/Parakeet/LLM) are device-only, validated by DEBUG "smoke" buttons.</li>
+      <li>New test <em>files</em> must be registered in the project: <code class="inl">ruby scripts/add_test_file.rb MyNewTests.swift</code>.</li>
+      <li>Dependencies resolve via Swift Package Manager on first build — <code class="inl">mlx-swift</code> (the ASR engines), plus <code class="inl">mlx-swift-lm</code> + <code class="inl">swift-huggingface</code> + <code class="inl">swift-transformers</code> (the cleanup LLM: model loading, HF download, tokenizers/chat templates). Nothing to install by hand.</li>
+    </ul>
+  </section>
+
+  <!-- ===================== MAP ===================== -->
+  <section id="map">
+    <h2><span class="num">12</span> Where to read next</h2>
+    <p>A reading order into the actual repo, now that the map is in your head:</p>
+    <div class="ros">
+      <div class="ros-row">
+        <div class="from"><b>The spine, in code</b>start here</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>Transcription/Transcriber.swift</code> — the protocols + the <code>TranscriptionOptions</code> sum type, with the <code>nonisolated</code> rationale in a long comment.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>The spine, again</b>the pattern, reused</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>Enrichment/LanguageModel.swift</code> + <code>MLXLanguageModel.swift</code> + <code>Cleaner.swift</code> — the cleanup feature, built as a carbon copy of the transcription spine.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>The orchestrator</b>the state machine in motion</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>Recording/RecorderViewModel.swift</code> — follow <code>startRecording()</code> then <code>stopAndTranscribe()</code>.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>The trickiest file</b>realtime audio + Sendable boundaries</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>Audio/LiveAudioEngine.swift</code> — the double-duty tap and <code>TapState</code>.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>The why behind everything</b>prose, not code</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>CLAUDE.md</code> (architecture + conventions), <code>planning/notes.md</code> (roadmap + stance), <code>CHANGE_LOG.md</code> (what shipped &amp; why).</div>
+      </div>
+    </div>
+
+    <div class="note tip">
+      <div class="h">▹ The takeaway, in one sentence</div>
+      <p>Relay Notes is a small app that uses Swift's type system (sum-type enums, protocols, optionals) to make illegal states unrepresentable, and Swift's concurrency model (actors, <code class="inl">@MainActor</code>, <code class="inl">AsyncStream</code>) to make a realtime audio→text→storage pipeline race-free at compile time — all so that providers can be swapped at runtime without touching the code that orchestrates them. The proof it works: the same protocol-spine pattern now backs <em>three</em> transcription engines <em>and</em> a second, independent on-device LLM cleanup capability.</p>
+    </div>
+
+    <div class="foot">
+      <p>Generated as an onboarding companion to the Relay Notes codebase · iOS 26 · SwiftUI · Swift 6 strict concurrency · SwiftData · MLX (mlx-swift + mlx-swift-lm). Code excerpts are lightly trimmed from the real source; read the files for the full, commented versions.</p>
+    </div>
+  </section>
+
+  </main>
+</div>
+
+<script>
+// ---------- Lightweight Swift/Bash syntax highlighter (no dependencies) ----------
+(function () {
+  const SWIFT_KW = new Set(("func let var if else guard return for in while switch case default " +
+    "struct class actor enum protocol extension import async await throws throw try do catch " +
+    "self Self nil true false nonisolated some any where init deinit static private public final " +
+    "weak unowned defer as is open internal fileprivate mutating associatedtype typealias break " +
+    "continue subscript lazy override convenience required get set willSet didSet").split(" "));
+  const BASH_KW = new Set("xcodebuild ruby brew gem open cd echo".split(" "));
+
+  function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+  function highlightSwift(text){
+    const re = /(\/\/[^\n]*)|("(?:[^"\\]|\\.)*")|(\b\d[\d_]*\.?\d*\b)|(@?[A-Za-z_]\w*)|([\s\S])/g;
+    let out = "";
+    text.replace(re, (m, com, str, num, word, other) => {
+      if (com !== undefined)      out += '<span class="tok-com">' + esc(com) + '</span>';
+      else if (str !== undefined) out += '<span class="tok-str">' + esc(str) + '</span>';
+      else if (num !== undefined) out += '<span class="tok-num">' + esc(num) + '</span>';
+      else if (word !== undefined){
+        if (SWIFT_KW.has(word))                    out += '<span class="tok-kw">'   + esc(word) + '</span>';
+        else if (/^@/.test(word))                  out += '<span class="tok-kw">'   + esc(word) + '</span>';
+        else if (/^[A-Z]/.test(word))              out += '<span class="tok-type">' + esc(word) + '</span>';
+        else                                       out += esc(word);
+      } else                                       out += esc(other);
+      return "";
+    });
+    return out;
+  }
+
+  function highlightBash(text){
+    const re = /(#[^\n]*)|('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")|(\b\d+\b)|([A-Za-z_][\w-]*)|([\s\S])/g;
+    let out = "";
+    text.replace(re, (m, com, str, num, word, other) => {
+      if (com !== undefined)      out += '<span class="tok-com">' + esc(com) + '</span>';
+      else if (str !== undefined) out += '<span class="tok-str">' + esc(str) + '</span>';
+      else if (num !== undefined) out += '<span class="tok-num">' + esc(num) + '</span>';
+      else if (word !== undefined){
+        if (BASH_KW.has(word)) out += '<span class="tok-type">' + esc(word) + '</span>';
+        else                   out += esc(word);
+      } else                   out += esc(other);
+      return "";
+    });
+    return out;
+  }
+
+  document.querySelectorAll("pre > code").forEach(code => {
+    const lang = (code.className.match(/\b(swift|bash)\b/) || [,"swift"])[1];
+    const raw = code.textContent;               // browser already decoded entities → real chars
+    code.innerHTML = lang === "bash" ? highlightBash(raw) : highlightSwift(raw);
+    const pre = code.parentElement;
+    if (!pre.querySelector(".cap")) {
+      const cap = document.createElement("span");
+      cap.className = "cap";
+      cap.textContent = lang === "bash" ? "shell" : "swift";
+      pre.appendChild(cap);
+    }
+  });
+
+  // ---------- Scroll-spy for the sidebar ----------
+  const links = [...document.querySelectorAll("nav.side a")];
+  const map = new Map(links.map(a => [a.getAttribute("href").slice(1), a]));
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove("active"));
+        const a = map.get(e.target.id);
+        if (a) a.classList.add("active");
+      }
+    });
+  }, { rootMargin: "-15% 0px -75% 0px" });
+  document.querySelectorAll("main section[id]").forEach(s => obs.observe(s));
+
+  // close mobile nav on link tap
+  links.forEach(a => a.addEventListener("click", () => document.querySelector("nav.side").classList.remove("open")));
+})();
+</script>
+</body>
+</html>
