@@ -266,7 +266,7 @@
     <a href="#spine"><span class="n">06</span>The architecture spine</a>
     <a href="#dataflow"><span class="n">07</span>Tap → speak → saved</a>
     <a href="#persistence"><span class="n">08</span>Persistence: SwiftData</a>
-    <a href="#engines"><span class="n">09</span>Two engines, one socket</a>
+    <a href="#engines"><span class="n">09</span>Three engines, one socket</a>
     <a href="#ios"><span class="n">10</span>iOS realities</a>
     <a href="#tooling"><span class="n">11</span>Build &amp; tooling</a>
     <a href="#map"><span class="n">12</span>Where to read next</a>
@@ -281,11 +281,11 @@
       <h1>Relay Notes, decoded.</h1>
       <p class="lead">You know how to architect systems, reason about concurrency, and read a call graph. What you may <em>not</em> know is the iOS dialect: SwiftUI, actors, property wrappers, SwiftData, and the strict-concurrency rules Swift 6 enforces at compile time. This guide is a <strong>translation layer</strong> — it maps what you already know onto how a real, working iPhone app is built, using <strong>Relay Notes</strong> as the worked example.</p>
       <div class="pills">
-        <span class="pill"><b>What</b> &nbsp;on-device voice → text</span>
+        <span class="pill"><b>What</b> &nbsp;on-device voice → text → cleanup</span>
         <span class="pill"><b>UI</b> &nbsp;SwiftUI</span>
         <span class="pill"><b>Concurrency</b> &nbsp;Swift 6 strict</span>
         <span class="pill"><b>Data</b> &nbsp;SwiftData</span>
-        <span class="pill"><b>ML</b> &nbsp;MLX (Whisper)</span>
+        <span class="pill"><b>ML</b> &nbsp;MLX · Whisper · Parakeet · LLM</span>
         <span class="pill"><b>Target</b> &nbsp;iPhone 15 Pro Max</span>
       </div>
     </div>
@@ -294,14 +294,14 @@
     <p>The sections build on each other but each stands alone. If you want the <em>aha</em> fast, read <a href="#rosetta">§02 the Rosetta Stone</a> (concept mapping), then jump straight to <a href="#dataflow">§07</a>, which traces a single recording end-to-end through the actual types. The middle sections (§03–§05) are the language/framework primer; the later ones (§06–§11) are this app's architecture and the iOS-specific gotchas.</p>
     <div class="note tip">
       <div class="h">▹ The one idea that explains the whole codebase</div>
-      <p><strong>Every external capability sits behind a protocol so the runtime provider is swappable without a rebuild.</strong> Transcription has two interchangeable engines (Apple Speech, on-device Whisper) plugged into one socket. Hold that thought — it's the spine, and most of the architecture exists to serve it.</p>
+      <p><strong>Every external capability sits behind a protocol so the runtime provider is swappable without a rebuild.</strong> Transcription has <em>three</em> interchangeable engines (Apple Speech, on-device Whisper, on-device Parakeet) plugged into one socket — and the app now does the same trick a <em>second</em> time for an on-device LLM "Clean up" pass (a separate <code class="inl">LanguageModel</code> spine). Hold that thought — it's <em>the</em> pattern, and most of the architecture exists to serve it.</p>
     </div>
   </section>
 
   <!-- ===================== TOUR ===================== -->
   <section id="tour">
     <h2><span class="num">01</span> The 60-second tour</h2>
-    <p>Relay Notes is intentionally tiny in scope: <strong>tap a button, speak, and an on-device transcript is saved.</strong> No account, no server, works in airplane mode. That narrowness is a feature — it keeps the surface small enough that the architecture is legible. The pipeline is a straight line:</p>
+    <p>Relay Notes is intentionally tiny in scope: <strong>tap a button, speak, and an on-device transcript is saved</strong> — then, optionally, a one-tap on-device LLM "Clean up" pass tidies it. No account, no server, works in airplane mode. That narrowness is a feature — it keeps the surface small enough that the architecture is legible. The pipeline is a straight line, with cleanup as an optional post-hoc step on a saved note:</p>
 
     <div class="flow">
       <div class="stage"><div class="ic">🎙️</div><b>Capture</b><span>mic → PCM</span></div>
@@ -311,20 +311,26 @@
       <div class="stage"><div class="ic">📝</div><b>Transcribe</b><span>on-device</span></div>
       <div class="arr">›</div>
       <div class="stage"><div class="ic">🗂️</div><b>Store note</b><span>SwiftData</span></div>
+      <div class="arr">⋯›</div>
+      <div class="stage" style="border-style:dashed;opacity:.85"><div class="ic">✨</div><b>Clean up</b><span>opt · on-device LLM</span></div>
     </div>
 
-    <p>The "transcribe" box is where the interesting design lives. It's not one thing — it's a <em>socket</em> that accepts either engine:</p>
-    <div class="grid g2">
+    <p>The "transcribe" box is where the interesting design lives. It's not one thing — it's a <em>socket</em> that accepts any of three on-device engines:</p>
+    <div class="grid g3">
       <div class="card accent">
-        <h4>Apple Speech — the default</h4>
-        <p style="margin:0;font-size:14.5px;color:var(--text-soft)">Built into iOS (<code class="inl">SpeechAnalyzer</code> + <code class="inl">SpeechTranscriber</code>). Streams a <strong>live transcript</strong> as you talk. No download, no model management. The "it just works" floor.</p>
+        <h4>Apple Speech — permanent default</h4>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)">Built into iOS (<code class="inl">SpeechAnalyzer</code> + <code class="inl">SpeechTranscriber</code>). Streams a <strong>live transcript</strong> as you talk. No download. The "it just works" floor — and the settled default (iOS 27 strengthens it).</p>
       </div>
       <div class="card">
-        <h4>On-device Whisper — the upgrade</h4>
-        <p style="margin:0;font-size:14.5px;color:var(--text-soft)"><code class="inl">whisper-small.en</code> (481&nbsp;MB) running through <a href="https://github.com/ml-explore/mlx-swift">MLX</a>. Downloaded on first use. <strong>Decodes once when you stop</strong> (no live partials). Proves "on-device ≠ Apple-only."</p>
+        <h4>Whisper — opt-in upgrade</h4>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)"><code class="inl">whisper-small.en</code> (481&nbsp;MB) via <a href="https://github.com/ml-explore/mlx-swift">MLX</a>. Downloaded on first use. <strong>Decodes once when you stop</strong>. Proves "on-device ≠ Apple-only."</p>
+      </div>
+      <div class="card">
+        <h4>Parakeet — opt-in upgrade</h4>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)">NVIDIA <code class="inl">parakeet-tdt-0.6b-v2</code> (FastConformer + TDT, ~2.4&nbsp;GB) via MLX. Also finalize-only. A second your-choice engine, hand-ported the same way.</p>
       </div>
     </div>
-    <p>Everything below explains how those pieces are wired so that swapping engines is a runtime choice, not a code change — and how Swift's type system and concurrency model are leaned on to keep it safe.</p>
+    <p>And the "Clean up" feature is the <em>same pattern again</em>: a one-tap action that runs the saved transcript through an on-device LLM (Gemma 4 E2B) behind a separate <code class="inl">LanguageModel</code> protocol. Everything below explains how these pieces are wired so that swapping a provider is a runtime choice, not a code change — and how Swift's type system and concurrency model keep it safe.</p>
   </section>
 
   <!-- ===================== ROSETTA ===================== -->
@@ -688,9 +694,9 @@ private final class TapState: @unchecked Sendable { … }</code></pre>
 
       <!-- ===== actor inner ===== -->
       <rect class="dg-accent" x="428" y="244" width="174" height="66" rx="10"/>
-      <text class="dg-t" x="515" y="268" text-anchor="middle" font-size="11">WhisperMLXTranscriber</text>
-      <text class="dg-s" x="515" y="283" text-anchor="middle" font-size="9.5">one decode at a time</text>
-      <text class="dg-s" x="515" y="297" text-anchor="middle" font-size="9.5">cached weights ≈ 480 MB</text>
+      <text class="dg-t" x="515" y="267" text-anchor="middle" font-size="11">WhisperMLXTranscriber</text>
+      <text class="dg-s" x="515" y="282" text-anchor="middle" font-size="9">cached weights · one at a time</text>
+      <text class="dg-s" x="515" y="296" text-anchor="middle" font-size="9">+ Parakeet · cleanup LLM</text>
 
       <!-- ===== nonisolated inner ===== -->
       <rect class="dg-box" x="658" y="82" width="190" height="46" rx="9"/>
@@ -741,7 +747,7 @@ private final class TapState: @unchecked Sendable { … }</code></pre>
   <!-- ===================== SPINE ===================== -->
   <section id="spine">
     <h2><span class="num">06</span> The architecture spine: provider abstraction</h2>
-    <p>Here's the load-bearing pattern, stated plainly: <strong>capabilities hide behind protocols; concrete providers are resolved at runtime.</strong> Today it's transcription; the same shape is reserved for a future LLM-cleanup stage. If you internalize this section, the file layout makes sense. Here's the whole system on one slide — five layers, each depending only on the one below:</p>
+    <p>Here's the load-bearing pattern, stated plainly: <strong>capabilities hide behind protocols; concrete providers are resolved at runtime.</strong> It's used <em>twice</em> now — once for transcription (<code class="inl">Transcriber</code>, three engines) and once for on-device cleanup (<code class="inl">LanguageModel</code>, the "Clean up" feature). If you internalize this section, the file layout makes sense. Here's the whole system on one slide — five layers, each depending only on the one below; the two protocol spines sit in the teal/indigo band:</p>
 
     <figure class="diagram">
     <svg viewBox="0 0 880 408" role="img" aria-label="Layered architecture map of Relay Notes">
@@ -766,53 +772,59 @@ private final class TapState: @unchecked Sendable { … }</code></pre>
         <rect class="dg-box" x="724" y="24" width="127" height="54" rx="9"/><text class="dg-t" x="787" y="55">SettingsView</text>
       </g>
 
-      <!-- band 2: orchestration -->
+      <!-- band 2: orchestration (4 up) -->
       <text class="dg-t" x="14" y="123" font-size="12.5">Orchestration</text>
       <text class="dg-s" x="14" y="138" font-size="10">@MainActor</text>
       <g text-anchor="middle">
-        <rect class="dg-indigo" x="168" y="100" width="266" height="54" rx="9"/>
-        <text class="dg-t" x="301" y="122" font-size="12">RecorderViewModel</text>
-        <text class="dg-s" x="301" y="138" font-size="9.5">the state machine + async task orchestration</text>
-        <rect class="dg-box" x="446" y="100" width="127" height="54" rx="9"/>
-        <text class="dg-t" x="509" y="122" font-size="11.5">Tunings</text>
-        <text class="dg-s" x="509" y="138" font-size="9.5">@Observable</text>
-        <rect class="dg-box" x="585" y="100" width="266" height="54" rx="9"/>
-        <text class="dg-t" x="718" y="122" font-size="11.5">ReTranscriber</text>
-        <text class="dg-s" x="718" y="138" font-size="9.5">re-run a note through the other engine</text>
+        <rect class="dg-indigo" x="168" y="100" width="163" height="54" rx="9"/>
+        <text class="dg-t" x="249" y="122" font-size="11">RecorderViewModel</text>
+        <text class="dg-s" x="249" y="137" font-size="9">state machine + tasks</text>
+        <rect class="dg-box" x="341" y="100" width="163" height="54" rx="9"/>
+        <text class="dg-t" x="422" y="122" font-size="11.5">Tunings</text>
+        <text class="dg-s" x="422" y="137" font-size="9">@Observable</text>
+        <rect class="dg-box" x="514" y="100" width="163" height="54" rx="9"/>
+        <text class="dg-t" x="595" y="122" font-size="11.5">ReTranscriber</text>
+        <text class="dg-s" x="595" y="137" font-size="9">re-run another engine</text>
+        <rect class="dg-indigo" x="687" y="100" width="163" height="54" rx="9"/>
+        <text class="dg-t" x="768" y="122" font-size="11.5">Cleaner</text>
+        <text class="dg-s" x="768" y="137" font-size="9">drives "Clean up"</text>
       </g>
 
-      <!-- band 3: the spine -->
-      <text class="dg-dom-t" x="14" y="199" font-size="12.5">The spine</text>
-      <text class="dg-s" x="14" y="214" font-size="10">protocols + DI</text>
-      <g text-anchor="middle" font-size="10.5">
-        <rect class="dg-accent" x="168" y="176" width="127" height="54" rx="9"/><text class="dg-t" x="231" y="199">Transcriber</text><text class="dg-s" x="231" y="214" font-size="9.5">protocol</text>
-        <rect class="dg-accent" x="307" y="176" width="127" height="54" rx="9"/><text class="dg-t" x="370" y="199">Transcription-</text><text class="dg-t" x="370" y="213">Session</text>
-        <rect class="dg-accent" x="446" y="176" width="127" height="54" rx="9"/><text class="dg-t" x="509" y="199">Transcription-</text><text class="dg-t" x="509" y="213">Options · enum</text>
-        <rect class="dg-accent" x="585" y="176" width="127" height="54" rx="9"/><text class="dg-t" x="648" y="199">Transcription-</text><text class="dg-t" x="648" y="213">Engine · enum</text>
-        <rect class="dg-accent" x="724" y="176" width="127" height="54" rx="9"/><text class="dg-t" x="787" y="199">Transcriber-</text><text class="dg-t" x="787" y="213">Factory</text>
+      <!-- band 3: the two spines (6 up) -->
+      <text class="dg-dom-t" x="14" y="195" font-size="12.5">The spines</text>
+      <text class="dg-s" x="14" y="210" font-size="10">protocols + DI</text>
+      <g text-anchor="middle" font-size="9.5">
+        <rect class="dg-accent" x="168" y="176" width="105" height="54" rx="9"/><text class="dg-t" x="220" y="199">Transcriber</text><text class="dg-s" x="220" y="213">protocol</text>
+        <rect class="dg-accent" x="282" y="176" width="105" height="54" rx="9"/><text class="dg-t" x="334" y="196">Transcription-</text><text class="dg-t" x="334" y="208">Session</text>
+        <rect class="dg-accent" x="396" y="176" width="105" height="54" rx="9"/><text class="dg-t" x="448" y="196">Transcription-</text><text class="dg-t" x="448" y="208">Options</text>
+        <rect class="dg-accent" x="510" y="176" width="105" height="54" rx="9"/><text class="dg-t" x="562" y="196">Transcriber-</text><text class="dg-t" x="562" y="208">Factory</text>
+        <rect class="dg-accent" x="624" y="176" width="105" height="54" rx="9"/><text class="dg-t" x="676" y="199">ModelStores</text><text class="dg-s" x="676" y="213">registry</text>
+        <rect class="dg-indigo" x="738" y="176" width="105" height="54" rx="9"/><text class="dg-t" x="790" y="199">LanguageModel</text><text class="dg-s" x="790" y="213">cleanup spine</text>
       </g>
 
-      <!-- band 4: providers -->
+      <!-- band 4: providers (6 up) -->
       <text class="dg-t" x="14" y="275" font-size="12.5">Providers</text>
       <text class="dg-s" x="14" y="290" font-size="10">&amp; capability</text>
       <g text-anchor="middle">
-        <rect class="dg-box" x="168" y="252" width="127" height="54" rx="9"/><text class="dg-t" x="231" y="273" font-size="10.5">AppleSpeech-</text><text class="dg-t" x="231" y="286" font-size="10.5">Transcriber</text><text class="dg-s" x="231" y="300" font-size="9">class</text>
-        <rect class="dg-accent" x="307" y="252" width="127" height="54" rx="9"/><text class="dg-t" x="370" y="273" font-size="10.5">WhisperMLX-</text><text class="dg-t" x="370" y="286" font-size="10.5">Transcriber</text><text class="dg-s" x="370" y="300" font-size="9">actor</text>
-        <rect class="dg-box" x="446" y="252" width="127" height="54" rx="9"/><text class="dg-t" x="509" y="273" font-size="10.5">LiveAudio-</text><text class="dg-t" x="509" y="286" font-size="10.5">Engine</text><text class="dg-s" x="509" y="300" font-size="9">@MainActor</text>
-        <rect class="dg-box" x="585" y="252" width="127" height="54" rx="9"/><text class="dg-t" x="648" y="273" font-size="10.5">WhisperModel-</text><text class="dg-t" x="648" y="286" font-size="10.5">Store</text><text class="dg-s" x="648" y="300" font-size="9">downloads</text>
-        <rect class="dg-box" x="724" y="252" width="127" height="54" rx="9"/><text class="dg-t" x="787" y="280" font-size="11">Note</text><text class="dg-s" x="787" y="296" font-size="9">@Model</text>
+        <rect class="dg-box" x="168" y="252" width="105" height="54" rx="9"/><text class="dg-t" x="220" y="272" font-size="9.5">AppleSpeech-</text><text class="dg-t" x="220" y="284" font-size="9.5">Transcriber</text><text class="dg-s" x="220" y="299" font-size="8.5">class</text>
+        <rect class="dg-accent" x="282" y="252" width="105" height="54" rx="9"/><text class="dg-t" x="334" y="272" font-size="9.5">WhisperMLX-</text><text class="dg-t" x="334" y="284" font-size="9.5">Transcriber</text><text class="dg-s" x="334" y="299" font-size="8.5">actor</text>
+        <rect class="dg-accent" x="396" y="252" width="105" height="54" rx="9"/><text class="dg-t" x="448" y="272" font-size="9.5">ParakeetMLX-</text><text class="dg-t" x="448" y="284" font-size="9.5">Transcriber</text><text class="dg-s" x="448" y="299" font-size="8.5">actor</text>
+        <rect class="dg-indigo" x="510" y="252" width="105" height="54" rx="9"/><text class="dg-t" x="562" y="272" font-size="9.5">MLXLanguage-</text><text class="dg-t" x="562" y="284" font-size="9.5">Model</text><text class="dg-s" x="562" y="299" font-size="8.5">actor</text>
+        <rect class="dg-box" x="624" y="252" width="105" height="54" rx="9"/><text class="dg-t" x="676" y="272" font-size="9.5">LiveAudio-</text><text class="dg-t" x="676" y="284" font-size="9.5">Engine</text><text class="dg-s" x="676" y="299" font-size="8.5">@MainActor</text>
+        <rect class="dg-box" x="738" y="252" width="105" height="54" rx="9"/><text class="dg-t" x="790" y="280" font-size="10.5">Note</text><text class="dg-s" x="790" y="295" font-size="8.5">@Model</text>
       </g>
 
-      <!-- band 5: frameworks -->
+      <!-- band 5: frameworks (5 up) -->
       <text class="dg-t" x="14" y="352" font-size="12.5">Frameworks</text>
-      <g text-anchor="middle" font-size="11">
-        <rect class="dg-band" x="183" y="330" width="150" height="40" rx="9"/><text class="dg-s" x="258" y="354">Speech</text>
-        <rect class="dg-band" x="351" y="330" width="150" height="40" rx="9"/><text class="dg-s" x="426" y="354">AVFoundation</text>
-        <rect class="dg-band" x="519" y="330" width="150" height="40" rx="9"/><text class="dg-s" x="594" y="354">MLX · mlx-swift</text>
-        <rect class="dg-band" x="687" y="330" width="150" height="40" rx="9"/><text class="dg-s" x="762" y="354">SwiftData</text>
+      <g text-anchor="middle" font-size="10.5">
+        <rect class="dg-band" x="168" y="330" width="124" height="40" rx="9"/><text class="dg-s" x="230" y="354">Speech</text>
+        <rect class="dg-band" x="306" y="330" width="124" height="40" rx="9"/><text class="dg-s" x="368" y="354">AVFoundation</text>
+        <rect class="dg-band" x="444" y="330" width="124" height="40" rx="9"/><text class="dg-s" x="506" y="354">mlx-swift</text>
+        <rect class="dg-band" x="582" y="330" width="124" height="40" rx="9"/><text class="dg-s" x="644" y="354">mlx-swift-lm</text>
+        <rect class="dg-band" x="720" y="330" width="124" height="40" rx="9"/><text class="dg-s" x="782" y="354">SwiftData</text>
       </g>
     </svg>
-    <figcaption>The teal layer is the seam: everything above it talks only to <em>protocols</em>; everything at the provider layer is a swappable implementation (<code class="inl">WhisperMLXTranscriber</code>, also teal, is the one that plugs in). Add an engine = add a box on the provider row.</figcaption>
+    <figcaption><strong>Two protocol spines live in the band-3 seam:</strong> transcription (teal — <code class="inl">Transcriber</code> &amp; friends) and cleanup (indigo — <code class="inl">LanguageModel</code>). Everything above talks only to those protocols; the provider row holds the swappable implementations (the three teal/indigo provider boxes are the MLX actors). Add a capability = add a box, not a refactor.</figcaption>
     </figure>
 
     <h3>The contract has two methods, both on purpose</h3>
@@ -844,31 +856,60 @@ private final class TapState: @unchecked Sendable { … }</code></pre>
     <p><code class="inl">emitsLivePartials</code> is a nice example of pushing a decision to the type that owns the knowledge: the recorder asks the session "do you stream?" rather than inferring it from an engine enum — so adding an engine doesn't mean editing the recorder.</p>
 
     <h3>Resolving the provider: the factory</h3>
-    <p>A small factory maps the user's selected engine to a (cached) concrete instance. Caching is load-bearing — recreating the Whisper transcriber would reload 480&nbsp;MB of weights every recording:</p>
+    <p>A small factory maps the selected engine to a cached concrete instance — with a twist that matters on a memory-constrained phone: it keeps <strong>at most one MLX engine resident at a time</strong>. Whisper (~0.5&nbsp;GB) and Parakeet (~1.2&nbsp;GB) are never used simultaneously, so switching to a different MLX engine evicts the previous model's weights before loading the next. Apple Speech holds no such state, so it's cached independently:</p>
     <pre><code class="swift">@MainActor
 final class TranscriberFactory {
-    private var appleSpeech: AppleSpeechTranscriber?
-    private var whisperMLX: WhisperMLXTranscriber?
+    private var appleSpeech: AppleSpeechTranscriber?              // cheap, cached on its own
+    private var liveMLX: (engine: TranscriptionEngine,           // at most ONE MLX engine live
+                          transcriber: any Transcriber)?
 
     func transcriber(for engine: TranscriptionEngine) -> any Transcriber {
         switch engine {
-        case .apple:      return appleSpeech ?? { let t = AppleSpeechTranscriber(locale: locale); appleSpeech = t; return t }()
-        case .whisperMLX: return whisperMLX  ?? { let t = WhisperMLXTranscriber(store: whisperModelStore); whisperMLX = t; return t }()
+        case .apple:       return appleSpeech ?? makeApple()
+        case .whisperMLX:  return liveMLXTranscriber(for: engine) { WhisperMLXTranscriber(store: stores?.whisper) }
+        case .parakeetMLX: return liveMLXTranscriber(for: engine) { ParakeetMLXTranscriber(store: stores?.parakeet) }
         }
     }
-}</code></pre>
 
-    <p>Put together, the socket looks like this — three concrete providers, one interface, the choice deferred to runtime:</p>
+    private func liveMLXTranscriber(for engine: TranscriptionEngine, _ make: () -> any Transcriber) -> any Transcriber {
+        if let liveMLX, liveMLX.engine == engine { return liveMLX.transcriber }
+        liveMLX = nil               // drop the old model (the factory's only strong ref) → its ~GB of weights free
+        let new = make(); liveMLX = (engine, new); return new
+    }
+}</code></pre>
+    <p>Where the weights live on disk is the job of the <code class="inl">ModelStores</code> registry — one place that maps each engine to its <code class="inl">DownloadableModelStore</code> and answers "is this engine ready?" (Apple is always ready; an MLX engine only once its model is downloaded). That's what gates engine selection in Settings and reconciles a stale saved choice at launch.</p>
+
+    <p>Put together, the socket looks like this — three live providers (plus a cloud slot reserved), one interface, the choice deferred to runtime:</p>
     <div class="flow">
-      <div class="stage" style="border-color:rgba(47,212,192,.4)"><div class="ic">🍎</div><b>AppleSpeech<br>Transcriber</b><span>on-device · shipping</span></div>
+      <div class="stage" style="border-color:rgba(47,212,192,.4)"><div class="ic">🍎</div><b>AppleSpeech<br>Transcriber</b><span>default · shipping</span></div>
       <div class="stage"><div class="ic">🧠</div><b>WhisperMLX<br>Transcriber</b><span>on-device · shipping</span></div>
-      <div class="stage" style="opacity:.6"><div class="ic">☁️</div><b>Cloud<br>Transcriber</b><span>opt-in · not built</span></div>
+      <div class="stage"><div class="ic">🦜</div><b>ParakeetMLX<br>Transcriber</b><span>on-device · shipping</span></div>
+      <div class="stage" style="opacity:.55"><div class="ic">☁️</div><b>Cloud<br>Transcriber</b><span>opt-in · not built</span></div>
       <div class="arr">›</div>
       <div class="stage" style="background:var(--grad-soft);border-color:var(--teal-bright)"><div class="ic">🔌</div><b><code style="font-size:13px">any Transcriber</code></b><span>the socket</span></div>
     </div>
+
+    <h3>The spine, proven twice: <code class="inl">LanguageModel</code></h3>
+    <p>The strongest evidence that the abstraction earns its keep: when the team wanted on-device transcript <em>cleanup</em> (de-filler, punctuation, light structure via a local LLM), they didn't bolt it onto the transcriber — they stamped out a <strong>second, identical spine</strong>. Same isolation rules, same actor-for-GPU-state pattern, same swap-the-provider-at-runtime promise:</p>
+    <pre><code class="swift">nonisolated protocol LanguageModel: Sendable {
+    func clean(_ raw: String) async throws -> String
+    // L3 adds `categorize(_:into:)` additively — designed in now, not a reshape.
+}
+
+// The MLX conformer is an actor, exactly like the transcribers — it caches a
+// non-Sendable, GPU-bound ModelContainer (Gemma 4 E2B, 4-bit) across calls.
+actor MLXLanguageModel: LanguageModel {
+    func clean(_ raw: String) async throws -> String {
+        let session = ChatSession(container, instructions: CleanupPrompt.system,
+                                  generateParameters: .init(temperature: 0))  // greedy: must not invent
+        return try await session.respond(to: raw)
+    }
+    func evict() { container = nil; MLX.GPU.clearCache() }   // same "one live model" discipline
+}</code></pre>
+    <p>The orchestrator mirrors <code class="inl">ReTranscriber</code> too: <code class="inl">Cleaner</code> (a <code class="inl">@MainActor @Observable</code>) gates the "Clean up" button on the model being downloaded, runs <code class="inl">clean()</code> off a saved note, and hands back a <strong>non-destructive</strong> candidate the user accepts or declines. Accepting writes a <em>separate</em> field — the raw transcript is never overwritten (more in §08). The prompt lives in one place (<code class="inl">CleanupPrompt</code>) so swapping the model never changes behavior.</p>
     <div class="note info">
-      <div class="h">◆ Why this is worth the ceremony</div>
-      <p>The whole point of v1 is to validate "on-device, your-choice model" without betting the app on one vendor. Because the seam is a protocol, a new engine is a new <em>file</em>, not a refactor — and the next planned capability (local LLM cleanup) drops a <code class="inl">LanguageModel</code> protocol into the exact same shape. The abstraction isn't speculative; it already pays for itself with two live engines.</p>
+      <div class="h">◆ Why this is worth the ceremony — now demonstrably</div>
+      <p>The point was always to validate "on-device, your-choice model" without betting the app on one vendor. Because each seam is a protocol, a new engine is a new <em>file</em>, not a refactor — and that claim is no longer theoretical: the cleanup feature dropped an entire <em>second</em> capability into the same shape, reusing the same actor-isolation and single-live-model patterns. The abstraction pays for itself with three live transcription engines <em>and</em> an on-device LLM.</p>
     </div>
   </section>
 
@@ -1046,10 +1087,12 @@ final class Note {
     var id: UUID
     var createdAt: Date
     var audioFilename: String      // ← filename, NOT a URL (see below)
-    var transcript: String
+    var transcript: String         // the canonical RAW text — never overwritten
     var title: String?
     var transcriptionModel: String?    // provenance: "Apple Speech" / "Whisper (small.en)"
     var originalTranscript: String?    // pre-edit baseline, enables revert
+    var cleanedTranscript: String?     // LLM-cleaned version (non-destructive); nil = never cleaned
+    var cleanupModel: String?          // provenance: "Gemma 4 E2B (MLX 4-bit)"
 }</code></pre>
 
     <p>The container is wired up once, at the app's entry point — that's all it takes to get a working store:</p>
@@ -1074,29 +1117,34 @@ struct Relay_NotesApp: App {
     context.delete(self); try? context.save()           // row
 }</code></pre>
     </div>
+    <div class="note info">
+      <div class="h">◆ Additive &amp; non-destructive by design</div>
+      <p>Notice the optional-by-default fields. Both edit (<code class="inl">originalTranscript</code>) and cleanup (<code class="inl">cleanedTranscript</code>/<code class="inl">cleanupModel</code>) were added <em>after</em> notes already existed — as <code class="inl">nil</code>-defaulting optionals, which SwiftData migrates for free (no migration plan, no backfill). And both are <strong>non-destructive</strong>: the raw <code class="inl">transcript</code> is always the source of truth, so an LLM cleanup can be accepted, toggled, or removed without ever losing what was actually said. That's a deliberate stance — an LLM "improving" a note by inventing detail is worse than a messy-but-true one.</p>
+    </div>
   </section>
 
   <!-- ===================== ENGINES ===================== -->
   <section id="engines">
-    <h2><span class="num">09</span> Two engines, one socket</h2>
-    <p>The same <code class="inl">TranscriptionSession</code> interface backs two genuinely different implementations. Comparing them is the clearest illustration of why the abstraction earns its keep:</p>
+    <h2><span class="num">09</span> Three engines, one socket</h2>
+    <p>The same <code class="inl">TranscriptionSession</code> interface backs three genuinely different implementations. Comparing them is the clearest illustration of why the abstraction earns its keep:</p>
     <table>
-      <tr><th></th><th>Apple Speech</th><th>On-device Whisper (MLX)</th></tr>
-      <tr><td><b>Framework</b></td><td><code>SpeechAnalyzer</code> + <code>SpeechTranscriber</code></td><td><code>mlx-swift</code> 0.31.4, hand-ported pipeline</td></tr>
-      <tr><td><b>Model</b></td><td>Apple's, bundled with iOS, no choice</td><td><code>whisper-small.en</code> · 481&nbsp;MB · your choice of repo</td></tr>
-      <tr><td><b>Install</b></td><td>Nothing to download</td><td>Downloaded on first use → Application Support</td></tr>
-      <tr><td><b>Live partials</b></td><td><b>Yes</b> — words stream as you talk</td><td><b>No</b> — accumulate PCM, decode at <code>finish()</code></td></tr>
-      <tr><td><b>Concurrency type</b></td><td><code>nonisolated final class</code></td><td><code>actor</code> (guards cached weights)</td></tr>
-      <tr><td><b>Cost</b></td><td>Real-time, free</td><td>~4× real-time decode; ~2.8&nbsp;GB peak footprint</td></tr>
-      <tr><td><b>While recording, the UI…</b></td><td>renders the live transcript card</td><td>renders a mic-level meter + timer placeholder</td></tr>
+      <tr><th></th><th>Apple Speech</th><th>Whisper (MLX)</th><th>Parakeet (MLX)</th></tr>
+      <tr><td><b>Role</b></td><td><b>Permanent default</b></td><td>opt-in upgrade</td><td>opt-in upgrade</td></tr>
+      <tr><td><b>Framework</b></td><td><code>SpeechAnalyzer</code></td><td><code>mlx-swift</code>, hand-ported</td><td><code>mlx-swift</code>, hand-ported</td></tr>
+      <tr><td><b>Model</b></td><td>Apple's, no choice</td><td><code>whisper-small.en</code> · 481&nbsp;MB</td><td><code>parakeet-tdt-0.6b-v2</code> · ~2.4&nbsp;GB</td></tr>
+      <tr><td><b>Install</b></td><td>Nothing to download</td><td>Download on first use</td><td>Download on first use</td></tr>
+      <tr><td><b>Live partials</b></td><td><b>Yes</b> — stream as you talk</td><td><b>No</b> — decode at <code>finish()</code></td><td><b>No</b> — decode at <code>finish()</code></td></tr>
+      <tr><td><b>Concurrency type</b></td><td><code>nonisolated class</code></td><td><code>actor</code></td><td><code>actor</code></td></tr>
+      <tr><td><b>While recording, UI…</b></td><td>live transcript card</td><td>meter + timer placeholder</td><td>meter + timer placeholder</td></tr>
     </table>
+    <p>And there's a fourth MLX actor that isn't a transcriber at all — <code class="inl">MLXLanguageModel</code> (Gemma 4 E2B, the cleanup model from §06). The factory's "one live MLX model at a time" rule spans all of them: Whisper, Parakeet, and the cleanup LLM are never co-resident on the 8&nbsp;GB device.</p>
 
-    <h3>Why Whisper is an <code class="inl">actor</code> and Apple is a <code class="inl">class</code></h3>
-    <p>This is the concurrency model paying rent. Whisper caches hundreds of MB of non-<code class="inl">Sendable</code> MLX state and is GPU-bound — serializing access through an actor is both correct (no races on the cache) and desirable (decodes shouldn't overlap on one GPU). Apple's transcriber holds no such shared state, so a plain <code class="inl">nonisolated</code> class is enough. <strong>Same protocol, different isolation, chosen per-conformer</strong> — exactly the freedom the <code class="inl">nonisolated protocol</code> from §05 preserves.</p>
+    <h3>Why the MLX engines are <code class="inl">actor</code>s and Apple is a <code class="inl">class</code></h3>
+    <p>This is the concurrency model paying rent. Each MLX engine caches hundreds of MB to GBs of non-<code class="inl">Sendable</code> model state and is GPU-bound — serializing access through an actor is both correct (no races on the cache) and desirable (decodes shouldn't overlap on one GPU). Apple's transcriber holds no such shared state, so a plain <code class="inl">nonisolated</code> class is enough. <strong>Same protocol, different isolation, chosen per-conformer</strong> — exactly the freedom the <code class="inl">nonisolated protocol</code> from §05 preserves, and the reason adding Parakeet (and later the cleanup LLM) didn't perturb anything above the provider layer.</p>
 
     <div class="note info">
       <div class="h">◆ The product stance behind the engineering</div>
-      <p>Two axes are kept independent on purpose: <em>where it runs</em> (on-device vs cloud) and <em>whose model</em> (Apple's vs your choice). Apple Speech is on-device-Apple; Whisper is on-device-yours; a future cloud provider would be the third corner. v1 is deliberately <strong>local-first, cloud opt-in only</strong> — the app must be 100% functional in airplane mode. The protocol is what keeps all three corners reachable without forking the app.</p>
+      <p>Two axes are kept independent on purpose: <em>where it runs</em> (on-device vs cloud) and <em>whose model</em> (Apple's vs your choice). Apple Speech is on-device-Apple and the <strong>settled default</strong> — it works the instant the app installs, with no download. Whisper and Parakeet are on-device-yours, opt-in upgrades. The current bet is notable: rather than chase a more accurate transcriber, <strong>mitigate transcription errors with the on-device cleanup LLM</strong> — which is exactly why the second <code class="inl">LanguageModel</code> spine exists. Everything stays <strong>local-first, cloud opt-in only</strong>: the app is 100% functional in airplane mode. The protocols are what keep every corner reachable without forking the app.</p>
     </div>
   </section>
 
@@ -1124,7 +1172,11 @@ struct Relay_NotesApp: App {
       </div>
       <div class="card">
         <h4>Free-tier signing expires every 7 days</h4>
-        <p style="margin:0;font-size:14px;color:var(--text-soft)">Sideloading on a free Apple ID means the app stops launching after a week — re-build from Xcode to re-sign. Data (SwiftData rows + audio files) survives because the bundle ID is stable. The paid Developer Program is deferred until on-device LLM inference is validated.</p>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)">Sideloading on a free Apple ID means the app stops launching after a week — re-build from Xcode to re-sign. Data (SwiftData rows + audio files) survives because the bundle ID is stable. The paid Developer Program is still deferred — sideload covers the personal-device use case.</p>
+      </div>
+      <div class="card">
+        <h4>The 4-bit LLM needs the memory entitlement</h4>
+        <p style="margin:0;font-size:14px;color:var(--text-soft)">The cleanup model's generation peak crosses iOS's ~3&nbsp;GB jetsam ceiling, so the app ships <code class="inl">com.apple.developer.kernel.increased-memory-limit</code> (in <code class="inl">Relay Notes.entitlements</code>). The pleasant surprise: the <strong>free Apple ID tier accepts it</strong> — no paid program needed. The ASR engines (Whisper/Parakeet) stay under the ceiling and don't require it.</p>
       </div>
       <div class="card">
         <h4>The project file is generated, edit it with care</h4>
@@ -1147,9 +1199,9 @@ xcodebuild build -project "Relay Notes.xcodeproj" -scheme "Relay Notes" \
     <ul class="clean">
       <li>The <strong>quotes matter</strong> — both the project name and scheme contain a space.</li>
       <li>Pipe through <code class="inl">xcbeautify</code>; raw <code class="inl">xcodebuild</code> output buries the actual errors.</li>
-      <li>Tests use Swift's <strong>Testing</strong> framework (<code class="inl">import Testing</code>, <code class="inl">@Test</code>, <code class="inl">#expect</code>) — closer to modern JS/Rust test ergonomics than XCTest. ~80 tests, ~12&nbsp;s warm.</li>
+      <li>Tests use Swift's <strong>Testing</strong> framework (<code class="inl">import Testing</code>, <code class="inl">@Test</code>, <code class="inl">#expect</code>) — closer to modern JS/Rust test ergonomics than XCTest. ~150 tests; the MLX numerics (Whisper/Parakeet/LLM) are device-only, validated by DEBUG "smoke" buttons.</li>
       <li>New test <em>files</em> must be registered in the project: <code class="inl">ruby scripts/add_test_file.rb MyNewTests.swift</code>.</li>
-      <li>Dependencies (<code class="inl">mlx-swift</code>, <code class="inl">swift-numerics</code>) resolve automatically via Swift Package Manager on first build — nothing to install by hand.</li>
+      <li>Dependencies resolve via Swift Package Manager on first build — <code class="inl">mlx-swift</code> (the ASR engines), plus <code class="inl">mlx-swift-lm</code> + <code class="inl">swift-huggingface</code> + <code class="inl">swift-transformers</code> (the cleanup LLM: model loading, HF download, tokenizers/chat templates). Nothing to install by hand.</li>
     </ul>
   </section>
 
@@ -1162,6 +1214,11 @@ xcodebuild build -project "Relay Notes.xcodeproj" -scheme "Relay Notes" \
         <div class="from"><b>The spine, in code</b>start here</div>
         <div class="arrow">→</div>
         <div class="to"><code>Transcription/Transcriber.swift</code> — the protocols + the <code>TranscriptionOptions</code> sum type, with the <code>nonisolated</code> rationale in a long comment.</div>
+      </div>
+      <div class="ros-row">
+        <div class="from"><b>The spine, again</b>the pattern, reused</div>
+        <div class="arrow">→</div>
+        <div class="to"><code>Enrichment/LanguageModel.swift</code> + <code>MLXLanguageModel.swift</code> + <code>Cleaner.swift</code> — the cleanup feature, built as a carbon copy of the transcription spine.</div>
       </div>
       <div class="ros-row">
         <div class="from"><b>The orchestrator</b>the state machine in motion</div>
@@ -1182,11 +1239,11 @@ xcodebuild build -project "Relay Notes.xcodeproj" -scheme "Relay Notes" \
 
     <div class="note tip">
       <div class="h">▹ The takeaway, in one sentence</div>
-      <p>Relay Notes is a small app that uses Swift's type system (sum-type enums, protocols, optionals) to make illegal states unrepresentable, and Swift's concurrency model (actors, <code class="inl">@MainActor</code>, <code class="inl">AsyncStream</code>) to make a realtime audio→text→storage pipeline race-free at compile time — all so that the transcription engine can be swapped at runtime without touching the code that orchestrates it.</p>
+      <p>Relay Notes is a small app that uses Swift's type system (sum-type enums, protocols, optionals) to make illegal states unrepresentable, and Swift's concurrency model (actors, <code class="inl">@MainActor</code>, <code class="inl">AsyncStream</code>) to make a realtime audio→text→storage pipeline race-free at compile time — all so that providers can be swapped at runtime without touching the code that orchestrates them. The proof it works: the same protocol-spine pattern now backs <em>three</em> transcription engines <em>and</em> a second, independent on-device LLM cleanup capability.</p>
     </div>
 
     <div class="foot">
-      <p>Generated as an onboarding companion to the Relay Notes codebase · iOS 26 · SwiftUI · Swift 6 strict concurrency · SwiftData · MLX. Code excerpts are lightly trimmed from the real source; read the files for the full, commented versions.</p>
+      <p>Generated as an onboarding companion to the Relay Notes codebase · iOS 26 · SwiftUI · Swift 6 strict concurrency · SwiftData · MLX (mlx-swift + mlx-swift-lm). Code excerpts are lightly trimmed from the real source; read the files for the full, commented versions.</p>
     </div>
   </section>
 
