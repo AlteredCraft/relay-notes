@@ -6,6 +6,10 @@ struct NoteDetailView: View {
     /// Injected from the list; `nil` in previews → the re-transcribe control is
     /// hidden. Lets you re-run this note's saved audio through another engine.
     var reTranscriber: ReTranscriber? = nil
+    /// Cleanup controller; `nil` in previews → the "Clean up" control is hidden.
+    var cleaner: Cleaner? = nil
+    /// Deep-link to the Tuning sheet (for the "Set up cleanup model" link).
+    var onOpenSettings: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -20,6 +24,12 @@ struct NoteDetailView: View {
     @State private var isReTranscribing = false
     @State private var reOutcome: ReTranscriber.Outcome?
     @State private var reErrorMessage: String?
+    @State private var isCleaning = false
+    @State private var cleanOutcome: Cleaner.Outcome?
+    @State private var cleanErrorMessage: String?
+    /// When a cleaned version exists, the detail shows it by default; this flips to
+    /// the raw transcript. Always raw while editing (editing operates on raw).
+    @State private var showOriginal = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,6 +47,8 @@ struct NoteDetailView: View {
                         }
                         if !isEditingTranscript {
                             reTranscribeControl
+                            cleanUpControl
+                            cleanedIndicator
                             editedIndicator
                         }
                     }
@@ -70,10 +82,10 @@ struct NoteDetailView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     ShareLink(
-                        item: note.transcript,
+                        item: displayedTranscript,
                         subject: Text(note.displayTitle)
                     )
-                    .disabled(note.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(displayedTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityLabel("Share transcript")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -103,6 +115,8 @@ struct NoteDetailView: View {
         .onDisappear {
             commitTitle()
             player.stop()
+            // Free the ~2.7 GB cleanup model when leaving the note (§3.3).
+            Task { await cleaner?.evict() }
         }
         .alert("Delete this note?", isPresented: $showDeleteConfirmation) {
             Button("Delete", role: .destructive) {
@@ -152,6 +166,29 @@ struct NoteDetailView: View {
         } message: {
             Text(reErrorMessage ?? "")
         }
+        .sheet(item: $cleanOutcome) { outcome in
+            CleanupOutcomeSheet(
+                outcome: outcome,
+                onAccept: {
+                    note.applyCleanup(outcome.cleaned, model: outcome.modelLabel)
+                    try? modelContext.save()
+                    showOriginal = false
+                    cleanOutcome = nil
+                },
+                onDecline: { cleanOutcome = nil }
+            )
+        }
+        .alert(
+            "Couldn't clean up",
+            isPresented: Binding(
+                get: { cleanErrorMessage != nil },
+                set: { if !$0 { cleanErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(cleanErrorMessage ?? "")
+        }
     }
 
     /// "Re-transcribe with…" menu, shown only when a reprocessor is injected and
@@ -198,9 +235,100 @@ struct NoteDetailView: View {
         }
     }
 
+    /// "Clean up" affordance — shown only for a not-yet-cleaned note with text and
+    /// a cleaner injected. Becomes a progress label while running; when the model
+    /// isn't downloaded it's a "Set up cleanup model" link that deep-links to the
+    /// Tuning sheet. (A cleaned note shows `cleanedIndicator` instead.)
+    @ViewBuilder
+    private var cleanUpControl: some View {
+        if let cleaner,
+           !note.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !note.isCleaned {
+            if isCleaning {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Cleaning up…")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.top, 2)
+            } else if cleaner.isAvailable {
+                Button {
+                    runCleanup(cleaner)
+                } label: {
+                    Label("Clean up", systemImage: "sparkles")
+                        .font(.caption)
+                }
+                .padding(.top, 2)
+            } else {
+                Button {
+                    onOpenSettings?()
+                } label: {
+                    Label("Set up cleanup model", systemImage: "sparkles")
+                        .font(.caption)
+                }
+                .padding(.top, 2)
+                .disabled(onOpenSettings == nil)
+            }
+        }
+    }
+
+    /// Shown once a note has a cleaned version: provenance + a raw/cleaned toggle +
+    /// a "Remove" affordance (drops the cleaned copy; the raw transcript is always
+    /// preserved). Mirrors `editedIndicator`'s inline caption style.
+    @ViewBuilder
+    private var cleanedIndicator: some View {
+        if note.isCleaned {
+            VStack(alignment: .leading, spacing: 4) {
+                if let model = note.cleanupModel {
+                    Label("Cleaned with \(model)", systemImage: "sparkles")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                HStack(spacing: 12) {
+                    Button(showOriginal ? "Show cleaned" : "Show original") {
+                        showOriginal.toggle()
+                    }
+                    Button("Remove", role: .destructive) {
+                        note.clearCleanup()
+                        try? modelContext.save()
+                        showOriginal = false
+                    }
+                }
+                .font(.caption)
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    private func runCleanup(_ cleaner: Cleaner) {
+        isCleaning = true
+        cleanErrorMessage = nil
+        Task {
+            defer { isCleaning = false }
+            do {
+                cleanOutcome = try await cleaner.clean(note)
+            } catch {
+                cleanErrorMessage = Cleaner.userMessage(for: error)
+            }
+        }
+    }
+
     /// The transcript body: read-only selectable text, or an expanding multi-line
     /// editor while in edit mode. `TextField(axis: .vertical)` (not `TextEditor`)
     /// so it grows with content and scrolls naturally inside the outer `ScrollView`.
+    /// True when the cleaned version should be shown — it exists, the user hasn't
+    /// toggled to raw, and we're not editing (editing always operates on raw).
+    private var showingCleaned: Bool {
+        note.isCleaned && !showOriginal && !isEditingTranscript
+    }
+
+    /// The text currently displayed (and shared): the cleaned version when
+    /// `showingCleaned`, otherwise the canonical raw transcript.
+    private var displayedTranscript: String {
+        showingCleaned ? (note.cleanedTranscript ?? note.transcript) : note.transcript
+    }
+
     @ViewBuilder
     private var transcriptSection: some View {
         if isEditingTranscript {
@@ -209,7 +337,7 @@ struct NoteDetailView: View {
                 .focused($transcriptFocused)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            Text(note.transcript)
+            Text(displayedTranscript)
                 .font(.body)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
@@ -372,6 +500,57 @@ private struct ReTranscribeOutcomeSheet: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Replace", action: onReplace)
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func transcriptSection(label: String, text: String, emphasized: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(emphasized ? Color.accentColor : .secondary)
+            Text(text.isEmpty ? "—" : text)
+                .font(.body)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+        }
+    }
+}
+
+/// Before/after view for a cleanup run — the raw transcript vs the cleaned
+/// candidate, so the user reviews before keeping. Non-destructive until "Accept";
+/// the raw transcript is preserved either way.
+private struct CleanupOutcomeSheet: View {
+    let outcome: Cleaner.Outcome
+    let onAccept: () -> Void
+    let onDecline: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    transcriptSection(label: "Original", text: outcome.raw, emphasized: false)
+                    Divider()
+                    transcriptSection(
+                        label: "Cleaned — \(outcome.modelLabel)",
+                        text: outcome.cleaned,
+                        emphasized: true
+                    )
+                }
+                .padding()
+            }
+            .navigationTitle("Clean up")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Discard", action: onDecline)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Accept", action: onAccept)
                         .fontWeight(.semibold)
                 }
             }

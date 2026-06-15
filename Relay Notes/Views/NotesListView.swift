@@ -9,10 +9,22 @@ struct NotesListView: View {
     /// Injected from `ContentView`; `nil` in previews/sample contexts, which
     /// hides the per-note "Re-transcribe" control in `NoteDetailView`.
     let reTranscriber: ReTranscriber?
+    /// Cleanup controller; `nil` in previews → hides the "Clean up" control.
+    let cleaner: Cleaner?
+    /// Opens the Tuning/Settings sheet (owned by `ContentView`) so the cleanup
+    /// "Set up model" link can deep-link there when no model is downloaded.
+    let onOpenSettings: (() -> Void)?
 
-    init(searchText: String = "", reTranscriber: ReTranscriber? = nil) {
+    init(
+        searchText: String = "",
+        reTranscriber: ReTranscriber? = nil,
+        cleaner: Cleaner? = nil,
+        onOpenSettings: (() -> Void)? = nil
+    ) {
         self.searchText = searchText
         self.reTranscriber = reTranscriber
+        self.cleaner = cleaner
+        self.onOpenSettings = onOpenSettings
     }
 
     private var filteredNotes: [Note] {
@@ -44,7 +56,12 @@ struct NotesListView: View {
             }
         }
         .navigationDestination(for: Note.self) { note in
-            NoteDetailView(note: note, reTranscriber: reTranscriber)
+            NoteDetailView(
+                note: note,
+                reTranscriber: reTranscriber,
+                cleaner: cleaner,
+                onOpenSettings: onOpenSettings
+            )
         }
     }
 

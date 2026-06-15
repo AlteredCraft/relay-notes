@@ -21,10 +21,16 @@ import Observation
 final class ModelStores {
     let whisper: WhisperModelStore
     let parakeet: ParakeetModelStore
+    /// The L2 cleanup (LLM) model store. Not a `TranscriptionEngine`, so it's a
+    /// sibling here — outside the engine `store(for:)` / `readyEngines` machinery —
+    /// but it shares this registry as the one place the app gets model presence.
+    /// Cleanup gating reads `cleanup.status` directly (see `NoteDetailView`).
+    let cleanup: CleanupModelStore
 
     init() {
         self.whisper = WhisperModelStore()
         self.parakeet = ParakeetModelStore()
+        self.cleanup = CleanupModelStore()
     }
 
     // Explicit-store overloads for tests (e.g. a store bound to a temp directory).
@@ -37,16 +43,25 @@ final class ModelStores {
     init(whisper: WhisperModelStore) {
         self.whisper = whisper
         self.parakeet = ParakeetModelStore()
+        self.cleanup = CleanupModelStore()
     }
 
     init(parakeet: ParakeetModelStore) {
         self.whisper = WhisperModelStore()
         self.parakeet = parakeet
+        self.cleanup = CleanupModelStore()
     }
 
     init(whisper: WhisperModelStore, parakeet: ParakeetModelStore) {
         self.whisper = whisper
         self.parakeet = parakeet
+        self.cleanup = CleanupModelStore()
+    }
+
+    init(cleanup: CleanupModelStore) {
+        self.whisper = WhisperModelStore()
+        self.parakeet = ParakeetModelStore()
+        self.cleanup = cleanup
     }
 
     /// The download store backing `engine`, or `nil` for engines with no

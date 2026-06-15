@@ -96,6 +96,51 @@ extension ModelDownloadSpec {
         ],
         bundledFiles: [],
         downloadSizeMB: 2357)
+
+    /// `mlx-community/gemma-4-e2b-it-4bit` — the L2 cleanup model (Gemma 4 E2B,
+    /// non-QAT 4-bit). Downloaded as a complete HF snapshot into one directory and
+    /// loaded by `mlx-swift-lm` via `loadContainer(directory:using:)` — so the spec
+    /// pins **every file the loader + tokenizer read** (the `*.safetensors` +
+    /// `*.json` + `*.jinja` set the repo-id path pulls), keeping the HF filenames
+    /// verbatim (the loader/`AutoTokenizer` look them up by name). Pinned to commit
+    /// `2c3e5074…`. SHA-256s: the two LFS files (`model.safetensors`, `tokenizer.json`)
+    /// use the Git-LFS oid from HF's tree API; the small non-LFS configs are computed
+    /// from the pinned bytes (same approach as Parakeet's `config.json`).
+    ///
+    /// **Why non-QAT, not `-qat-4bit`:** the QAT build omits `k_proj`/`v_proj` on
+    /// Gemma 4's KV-sharing layers (15–34), which MLXLLM 3.31.3 declares for every
+    /// layer → keyNotFound at load (device-confirmed 2026-06-14). This build
+    /// materializes them on all 35 layers and is the library's validated preset.
+    /// See `planning/plan.L2.md` §4.
+    static let gemmaCleanupE2B = ModelDownloadSpec(
+        subdirectory: ["llm", "gemma-4-e2b-it-4bit"],
+        remoteFiles: {
+            let base = "https://huggingface.co/mlx-community/gemma-4-e2b-it-4bit/resolve/"
+                + "2c3e507453b4f218d05fe3cc97bea5c5a654257e/"
+            func file(_ name: String, _ sha: String, _ size: Int64) -> RemoteFile {
+                RemoteFile(url: URL(string: base + name)!, sha256: sha, size: size, destFilename: name)
+            }
+            return [
+                file("model.safetensors",
+                     "e9bea0584546fafb5ff83a1132a6c4662a8498cc6a5bcda52fc6ca562b7bafab", 3_581_101_896),
+                file("model.safetensors.index.json",
+                     "a8aa7359c747a0d59368dbff9a1029da86bda139ccc0ae1f1e938db75de7d5ce", 230_329),
+                file("config.json",
+                     "6d12c87861fff3871d3a745011b0d852be6513f3ce594ae1e8d643dae9d3b9a8", 5_996),
+                file("tokenizer.json",
+                     "cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f", 32_169_626),
+                file("tokenizer_config.json",
+                     "90c3a3ba5bf53818383a58e1a776cbcacd2a038d4812eaa373e1522f2d06f3df", 2_095),
+                file("chat_template.jinja",
+                     "2f1b4d75d067bae3fe44e676721c7f077d243bc007156cb9c2f8b5836613d082", 17_336),
+                file("generation_config.json",
+                     "d4226bbe3117d2d253ba4609720ba82c6c4ce4627a9a6ae05387c78983ac03de", 208),
+                file("processor_config.json",
+                     "1bd0d00776284f369c1eff5fb631e865dfcdca861e0b7d60dbef27fcf37436a8", 902),
+            ]
+        }(),
+        bundledFiles: [],
+        downloadSizeMB: 3446)
 }
 
 // MARK: - Store

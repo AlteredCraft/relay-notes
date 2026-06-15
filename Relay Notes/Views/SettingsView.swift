@@ -33,6 +33,11 @@ struct SettingsView: View {
                     tunings.reconcileEngineAvailability(readyEngines: stores.readyEngines)
                 }
 
+                // The cleanup (LLM) model — not a transcription engine, so no
+                // engine-availability reconcile; the per-note "Clean up" action
+                // gates directly on this store's readiness.
+                CleanupModelSection(store: stores.cleanup)
+
                 // Engine-specific recognition settings swap with the selection
                 // (Approach C) — no engine ever shows another engine's dials.
                 switch tunings.engine {
@@ -184,6 +189,11 @@ struct SettingsView: View {
             Button("Run Parakeet smoke (console)") {
                 Task.detached(priority: .userInitiated) {
                     await ParakeetSmoke.run()
+                }
+            }
+            Button("Run cleanup smoke (console)") {
+                Task.detached(priority: .userInitiated) {
+                    await LLMCleanupSmoke.run()
                 }
             }
         } header: {

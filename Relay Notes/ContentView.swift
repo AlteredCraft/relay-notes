@@ -12,6 +12,7 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: RecorderViewModel?
     @State private var reTranscriber: ReTranscriber?
+    @State private var cleaner: Cleaner?
     @State private var stores = ModelStores()
     @State private var showSettings = false
     @State private var searchText = ""
@@ -19,8 +20,13 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                NotesListView(searchText: searchText, reTranscriber: reTranscriber)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                NotesListView(
+                    searchText: searchText,
+                    reTranscriber: reTranscriber,
+                    cleaner: cleaner,
+                    onOpenSettings: { showSettings = true }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 Divider()
                 if let viewModel {
                     RecorderView(viewModel: viewModel)
@@ -63,6 +69,7 @@ struct ContentView: View {
                     tunings: tunings
                 )
                 reTranscriber = ReTranscriber(factory: factory, stores: stores)
+                cleaner = Cleaner(store: stores.cleanup)
             }
         }
     }

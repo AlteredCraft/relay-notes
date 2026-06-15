@@ -55,14 +55,21 @@ L2 validates and the bar to beat.
 
 | Stage | What | State |
 |---|---|---|
-| **L2.0** | Inference wiring — `LanguageModel` protocol + `MLXLanguageModel` (via `mlx-swift-examples`), generate on device | ☐ not started |
-| **L2.1** | `CleanupPrompt` (centralized) + `clean()` + `LLMCleanupSmoke` skeleton | ☐ not started |
-| **L2.2** | Fixtures — real Apple-Speech transcripts (from dogfooding) → bundled `cleanup_fixtures.json` | ☐ not started |
-| **L2.3** | Head-to-head device run + recorded verdict (**the gate**) | ☐ not started |
-| **L2.4** | *(conditional)* minimal in-app "Clean up" action in `NoteDetailView` | ☐ gated on L2.3 |
+| **L2.0** | Inference wiring — `LanguageModel` protocol + `MLXLanguageModel` (via `mlx-swift-lm`), generate on device | ✅ **DONE — device-validated 2026-06-14 (iPhone 15 Pro Max).** Gemma 4 E2B non-QAT (`gemma-4-e2b-it-4bit`) loads (3.4 s, resident floor 2.67 GB) + generates **excellent** cleanup; ~23 tok/s (approx); **peak 3.02 GB** — just under the ~3 GB no-entitlement ceiling on a *tiny* sample (longer notes likely need the entitlement). Free-tier build accepted the entitlement (§10 Q3 resolved). QAT build doesn't load (§4). Deps: mlx-swift-lm 3.31.3 + swift-huggingface 0.9.0 + swift-transformers 1.3.3 + hand-rolled bridge (§3.1/§6). |
+| **L2.1** | `CleanupPrompt` (centralized) + `clean()` + `LLMCleanupSmoke` skeleton | ✅ **done with L2.0** — `CleanupPrompt.swift` + `clean()` + a 1-sample `LLMCleanupSmoke` shipped + device-validated. Remaining polish (carry into L2.3): pure metric-helper unit tests; **precise tok/s** (stream token counts vs the current word-count approximation). |
+| **L2.4** | **In-app "Clean up" action** in `NoteDetailView` (pulled forward — see re-sequencing note) | ✅ **DONE — device-validated 2026-06-14 (iPhone 15 Pro Max).** Cleanup works end-to-end on a real note. Centralized model management in the Tuning sheet (`CleanupModelStore` + `CleanupModelSection`, same `DownloadableModelStore` infra as Whisper/Parakeet); "Clean up" gates on model presence with a Tuning deep-link; before/after **Accept/Decline**; non-destructive (`Note.cleanedTranscript`, raw preserved). See §6. |
+| **L2.2** | ~~Fixtures → `cleanup_fixtures.json`~~ | ⊘ **superseded by in-app dogfooding** (see note) — real notes cleaned in-app *are* the corpus + the quality judgment. Revive only if a deterministic fixed-corpus check is wanted later. |
+| **L2.3** | Head-to-head model verdict (Gemma vs Qwen vs cloud ceiling) | ⊘ **deferred, not lost** — `LLMCleanupSmoke` (repo-id path) still sweeps candidates when we want the formal A/B / a model picker. Dogfooding is the primary signal now. |
 
-Prereqs from elsewhere: the `increased-memory-limit` entitlement (notes.md L1 / watch-items),
-expected to work on the free-tier sideload; confirm at L2.0.
+> [!note] Re-sequencing (2026-06-14, post-L2.0)
+> L2.0 proved on-device cleanup *works* with strong quality, retiring the "harness-first,
+> UI-last" caution (its whole point was de-risking the unknown). We **pulled L2.4 forward** and
+> made the real in-app feature the evaluation vehicle — dogfooding real notes is a better quality
+> signal than curated fixtures (L2.2) and yields the transcripts for free. The L2.3 harness stays
+> available for a rigorous model A/B; it's deferred, not deleted. Decision owner: Sam.
+
+Prereqs from elsewhere: the `increased-memory-limit` entitlement — **resolved at L2.0** (free-tier
+sideload accepts it, §10 Q3).
 
 ---
 
@@ -99,22 +106,35 @@ prove it with a device smoke harness before any UI.** Why this shape:
 
 ## 3. Load-bearing findings & constraints — READ FIRST
 
-### 3.1 Inference engine: `mlx-swift-examples`, with fallbacks
+### 3.1 Inference engine: `mlx-swift-lm` (was `mlx-swift-examples`), with fallbacks
 
-- **Primary:** add the **`mlx-swift-examples`** Swift package and use its LLM libraries
-  (`MLXLLM` + `MLXLMCommon`). The model factory loads a model **container** from an HF repo id
-  (downloads weights into the app container) and exposes a token-streaming `generate` API; it
-  applies the model's **chat template** via the tokenizer (swift-transformers under the hood).
+> [!note] L2.0a verified (2026-06-14) — gating risk RESOLVED, **GO on the MLX path**
+> The package **moved**: the LLM implementations that used to live in `mlx-swift-examples`
+> are now in **`github.com/ml-explore/mlx-swift-lm`** — add *that* package. Latest tag **3.31.3**;
+> products **`MLXLLM` + `MLXLMCommon`**; it depends on mlx-swift `.upToNextMinor(from: "0.31.3")`,
+> i.e. `>= 0.31.3, < 0.32` — **compatible** with the project's current mlx-swift pin
+> (`>= 0.31.0`, already resolved to 0.31.4), so adding it just tightens the floor to 0.31.3.
+> **Both arches are implemented** (verified against the `3.31.3` source tree):
+> `Libraries/MLXLLM/Models/Gemma4.swift` + `Gemma4Text.swift` and `Qwen35.swift`, with
+> `LLMTypeRegistry` entries `gemma4`/`gemma4_text` and `qwen3_5`/`qwen3_5_text`. So the
+> Eloquent-style MLX path stands — **no need** to drop to LiteRT/#10 *or* the Qwen fallback on
+> arch grounds. Repo-id + footprint corrections are in §4.
+
+- **Primary:** add the **`mlx-swift-lm`** Swift package and use its LLM libraries
+  (`MLXLLM` + `MLXLMCommon`). The model factory (`LLMModelFactory.shared`) loads a model
+  **container** from an HF repo id (downloads weights into the app container) and exposes a
+  token-streaming `generate` API; it picks the arch from the repo's `config.json` `model_type`
+  (so any repo whose type is registered loads — no preset needed) and applies the model's
+  **chat template** via the tokenizer (swift-transformers under the hood).
   *Confirm exact symbol names at integration — this package evolves (the T2 port hit
-  mlx-swift 0.25.3→0.31.4 drift); pin a version and read its current README/sources.*
+  mlx-swift 0.25.3→0.31.4 drift); pinned to **3.31.3**, read its current LLM example sources.*
 - **Fallbacks (only if the primary churns):** `LocalLLMClient` (MIT, GGUF+MLX, *experimental*),
   or raw `mlx-swift` + a hand-rolled tokenizer/sampler (the Whisper/Parakeet style — far more
   work; avoid unless forced).
-- **⚠️ Architecture support is the gating risk (verify FIRST at L2.0).** Gemma 4 (Apr 2026) and
-  Qwen 3.5 are new — confirm `mlx-swift-examples` actually implements **the Gemma 4 architecture**
-  before committing. **Edge Eloquent runs Gemma on LiteRT, not MLX** — so if MLX arch support is
-  absent, the choices are the LiteRT path (bigger lift, issue #10) or the **Qwen 3.5 4B** MLX
-  fallback (which exists precisely to de-risk this). Qwen 3.5 4B MLX support is the safer bet.
+- **Transitive deps:** `mlx-swift-lm` pulls **swift-syntax** (`from: 600.0.0`, for the
+  `MLXHuggingFace` macros) and `swift-docc-plugin`. Linking only `MLXLLM` + `MLXLMCommon`
+  shouldn't *build* the macro target, but SPM resolves swift-syntax into the graph — expect a
+  slower first resolve. Build-time watch-item, not a blocker.
 - **License hygiene:** Gemma 4 cards report **Apache 2.0**; Qwen has been Apache 2.0 — verify per
   model before shipping (a `# config required, fail-fast` concern).
 
@@ -167,18 +187,31 @@ log). `Transcriber`/`TranscriptionSession` are the precedent. The MLX-backed con
 
 ## 4. Reference materials
 
-- **Inference:** `mlx-swift-examples` (Apple/ml-explore) — `MLXLLM`, `MLXLMCommon`. Pin a
-  version; read its current LLM example for the load/generate API.
-- **Models (HF `mlx-community` 4-bit — confirm exact repo ids at L2.0):**
+- **Inference:** `mlx-swift-lm` (Apple/ml-explore, formerly `mlx-swift-examples`) — `MLXLLM`,
+  `MLXLMCommon`. Pinned **3.31.3**; read its current LLM example for the load/generate API.
+- **Models (HF `mlx-community` 4-bit — repo ids verified at L2.0a, 2026-06-14):**
 
-  | Model (MLX 4-bit) | repo (confirm) | License | Role |
+  | Model (MLX 4-bit) | repo (verified) | License | Role |
   |---|---|---|---|
-  | **Gemma 4 E2B (QAT)** | `mlx-community/gemma-4-E2B-it-qat-4bit` | Apache 2.0 (per card; verify) | **primary** — proven for this task in Edge Eloquent; edge-built, smallest Gemma |
-  | **Qwen 3.5 4B** | `mlx-community/Qwen3.5-4B-MLX-4bit` | Apache 2.0 (verify) | **fallback** if Gemma doesn't work out (arch support / fit / quality) |
+  | **Gemma 4 E2B** (non-QAT) | `mlx-community/gemma-4-e2b-it-4bit` | Apache 2.0 (verify) | **primary** — proven family in Edge Eloquent; the library's registered preset (loads) |
+  | **Qwen 3.5 4B** | `mlx-community/Qwen3.5-4B-4bit` | Apache 2.0 (verify) | **fallback** — pure-text, standard arch; the clean comparison point |
 
-  Prefer `-qat-4bit` builds (Google's on-device quant — truest apples-to-apples). **Arch-support
-  caveat: see §3.1** — confirm `mlx-swift-examples` implements Gemma 4 before committing to the
-  MLX path; the Qwen 3.5 4B fallback is the hedge.
+  **Verified-id corrections + the QAT load failure (device, 2026-06-14):**
+  - **The `-qat-4bit` build does NOT load in MLXLLM 3.31.3.** `mlx-community/gemma-4-E2B-it-qat-4bit`
+    omits `k_proj`/`v_proj` weights on Gemma 4's **KV-cache-sharing layers** (15–34 of 35; later
+    layers reuse earlier layers' KV). MLXLLM's `Gemma4Attention` handles KV-sharing at *runtime*
+    (a `sharedKV` path) but still declares a `kProj` Linear for **every** layer, so weight-loading
+    throws `keyNotFound` at layer 15. The **non-QAT `gemma-4-e2b-it-4bit`** materializes `k_proj`
+    on all 35 layers (verified via its `model.safetensors.index.json`) → it loads, and it's the
+    build the library actually validated (`LLMRegistry.gemma4_e2b_it_4bit`). **So the plan's
+    "prefer `-qat-4bit`" is overridden by tooling: use the standard 4-bit build.** (Both are
+    multimodal configs, `model_type: gemma4`; `Gemma4Model` runs the text tower. The download is a
+    single ~4.3 GB `model.safetensors` — footprint watch-item the smoke quantifies.)
+  - **Qwen fallback id is `Qwen3.5-4B-4bit`, not `…-MLX-4bit`** (the latter doesn't exist on HF;
+    config: `model_type: qwen3_5`, 4-bit/group-64, pure text — no KV-sharing/multimodal quirks).
+  - **Arch support confirmed (§3.1)** — both `gemma4`/`gemma4_text` and `qwen3_5`/`qwen3_5_text`
+    are in `LLMTypeRegistry` at `3.31.3`; the Qwen fallback is a *quality/footprint/robustness*
+    hedge, not an arch hedge.
 
 - **Our smoke precedent:** `Relay Notes/Transcription/Whisper/MLXSmoke.swift` and
   `…/Parakeet/ParakeetSmoke.swift` — copy the structure (DEBUG, `os.Logger`, `PeakMemorySampler`,
@@ -305,20 +338,28 @@ cleanup slot** and whether the entitlement was needed.
 
 New `Relay Notes/Enrichment/` group (auto-included — file-system-synchronized):
 
-1. **`Enrichment/LanguageModel.swift`** — the `nonisolated protocol` (§5.1).
-2. **`Enrichment/MLXLanguageModel.swift`** — the `actor` conformer (§5.2).
-3. **`Enrichment/CleanupPrompt.swift`** — the centralized prompt (§5.3).
-4. **`Enrichment/LLMCleanupSmoke.swift`** — `#if DEBUG` device harness (§5.4).
-5. **`Relay Notes/Resources/cleanup_fixtures.json`** — fixtures (§5.5).
-6. **`SettingsView.swift`** — a `#if DEBUG` "Run cleanup smoke (console)" button beside the
+1. ✅ **`Enrichment/LanguageModel.swift`** — the `nonisolated protocol` (§5.1) + `LanguageModelError`.
+2. ✅ **`Enrichment/HuggingFaceBridge.swift`** — hand-rolled `Downloader` + `TokenizerLoader`
+   conformances (the §3.1 decision) so we use `mlx-swift-lm`'s HF download/tokenizer path
+   *without* `MLXHuggingFace`/swift-syntax. Transcribed from upstream's macro expansions; matched
+   to swift-huggingface 0.9.0 / swift-transformers 1.3.3.
+3. ✅ **`Enrichment/MLXLanguageModel.swift`** — the `actor` conformer (§5.2); `loadContainerIfNeeded`
+   + `clean()` via `ChatSession` + `evict()`.
+4. ✅ **`Enrichment/CleanupPrompt.swift`** — the centralized prompt (§5.3).
+5. ✅ **`Enrichment/LLMCleanupSmoke.swift`** — `#if DEBUG` device harness (§5.4); L2.0 section
+   (1 inline sample) shipped.
+6. ☐ **`Relay Notes/Resources/cleanup_fixtures.json`** — fixtures (§5.5) — L2.2.
+7. ✅ **`SettingsView.swift`** — `#if DEBUG` "Run cleanup smoke (console)" button beside the
    existing MLX/Parakeet smoke buttons.
-7. **(L2.4, conditional)** `NoteDetailView.swift` — a "Clean up" action that runs `clean()` on
+8. **(L2.4, conditional)** `NoteDetailView.swift` — a "Clean up" action that runs `clean()` on
    the note's transcript and shows cleaned-vs-raw. **Non-destructive**: keep the raw transcript;
    store the cleaned text in a *new* `Note` field (e.g. `cleanedTranscript: String?`) — a small
    additive SwiftData change, no migration pain. (Don't overwrite `transcript`.)
 
-The package dependency (`mlx-swift-examples`) is added via the `xcodeproj` Ruby gem or Xcode;
-validate the project mutation on a `/tmp` copy first (CLAUDE.md). New **test files** still need
+**Dependencies (added in Xcode):** `mlx-swift-lm` 3.31.3 (`MLXLLM` + `MLXLMCommon`) +
+`huggingface/swift-huggingface` 0.9.0 (`HuggingFace`) + `huggingface/swift-transformers` 1.3.3
+(`Tokenizers`). The latter two are what `mlx-swift-lm` externalized (§3.1); we link them directly
+and bridge by hand rather than pull `MLXHuggingFace`/swift-syntax. New **test files** still need
 `ruby scripts/add_test_file.rb <File>.swift`.
 
 ---
@@ -422,14 +463,20 @@ For each: **goal · do · validate · gotchas · done-when.**
 
 ## 10. Open questions / pending decisions
 
-1. **Candidate set / exact repo ids + arch support** — Gemma 4 E2B is the primary, Qwen 3.5 4B
-   the fallback. Confirm the exact `mlx-community` repo ids **and that `mlx-swift-examples`
-   implements the Gemma 4 architecture** at L2.0 (§3.1 — the gating risk; Eloquent runs Gemma on
-   LiteRT, so MLX support is not guaranteed).
+1. ~~**Candidate set / exact repo ids + arch support**~~ — **RESOLVED at L2.0a (2026-06-14).**
+   Gemma 4 *and* Qwen 3.5 arches are both implemented in `mlx-swift-lm` (the renamed package),
+   tag `3.31.3` (§3.1). Verified repo ids: primary `mlx-community/gemma-4-E2B-it-qat-4bit`
+   (multimodal config, text tower loaded — footprint watch-item), fallback
+   `mlx-community/Qwen3.5-4B-4bit` (§4). The Qwen fallback is now a quality/footprint hedge, not
+   an arch hedge. Remaining real unknown is **footprint + quality on device** (L2.0 / L2.3).
 2. **`mlx-swift-examples` vs fallbacks** — default to the package; only drop to `LocalLLMClient`
    / raw `mlx-swift` if it churns (§3.1).
-3. **Entitlement on free-tier sideload** — confirm a 4B-4bit model runs with the entitlement on
-   the free Apple ID tier at L2.0. If it forces the paid program, that's the V1.4 trigger — record it.
+3. ~~**Entitlement on free-tier sideload**~~ — **RESOLVED at L2.0 (2026-06-14).** The free Apple ID
+   tier **accepts** `com.apple.developer.kernel.increased-memory-limit`: the device build signed,
+   installed, and ran with it — no V1.4 trigger. Nuance: the L2.0 tiny sample peaked **3.02 GB**,
+   just *under* the ~3 GB no-entitlement ceiling, so it didn't strictly need the entitlement; a
+   real multi-minute note (larger KV cache) likely will, so it stays. **Re-measure peak on a long
+   fixture at L2.2/L2.3** to confirm where real notes land vs the ceiling.
 4. **Prompt tuning depth** — the prompt is a variable, and chat templates differ per family. How
    much per-model prompt tuning is fair before declaring a model "good enough"? Hold the prompt
    *fixed* across the head-to-head for comparability; tune only after a winner is chosen.
