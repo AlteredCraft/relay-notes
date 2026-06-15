@@ -77,6 +77,11 @@ actor MLXLanguageModel: Relay_Notes.LanguageModel {
         // Deterministic decode — cleanup must not invent (temperature 0 ⇒ greedy).
         var parameters = GenerateParameters()
         parameters.temperature = 0
+        // Bound the decode so a degenerate repetition loop can't run unbounded:
+        // cleanup output is ~input-sized, so a generous multiple of the input's
+        // token estimate is far above any legitimate result yet still self-
+        // terminates a runaway (GH #12). Without this, only an EOS token stops it.
+        parameters.maxTokens = CleanupTokenBudget.maxTokens(forRawCharacterCount: raw.count)
         // Instructions are rebuilt per call, so an edited personalization takes
         // effect on the next cleanup without reloading the (cached) container.
         let session = ChatSession(
