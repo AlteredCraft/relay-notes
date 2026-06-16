@@ -25,6 +25,13 @@ struct NoteDetailView: View {
     @State private var cleanOutcome: Cleaner.Outcome?
     @State private var cleanErrorMessage: String?
 
+    /// Whether the note's recording still exists on disk. `SampleNotes` never had
+    /// one and older notes may have had it removed, so the `#if DEBUG` audio share
+    /// is gated on this (sharing a missing file URL would share nothing).
+    private var audioFileExists: Bool {
+        FileManager.default.fileExists(atPath: note.audioURL.path)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -78,6 +85,19 @@ struct NoteDetailView: View {
                     .disabled(note.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityLabel("Share transcript")
                 }
+                #if DEBUG
+                // Debug-only: pull the raw recording off the device (AirDrop / Files)
+                // to seed the transcription WER corpus (GH #17) with troublesome
+                // real-world examples. Hidden when the note has no audio on disk.
+                if audioFileExists {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        ShareLink(item: note.audioURL) {
+                            Image(systemName: "waveform")
+                        }
+                        .accessibilityLabel("Share audio file for test corpus (debug)")
+                    }
+                }
+                #endif
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
