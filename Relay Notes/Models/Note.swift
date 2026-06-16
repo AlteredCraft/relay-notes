@@ -36,6 +36,19 @@ final class Note {
     /// "Gemma 4 E2B (MLX 4-bit)". `nil` when not cleaned. Mirrors `transcriptionModel`.
     var cleanupModel: String?
 
+    /// Append-only revision history (R1). The note's text lives here, not in the
+    /// legacy slots above — every transformation (re-transcribe, edit, cleanup)
+    /// appends a `Revision`. Cascade-deleted with the note. **Transitional (R1.0):**
+    /// the legacy slots are still populated/read by consumers not yet migrated;
+    /// they go away in R1.3. See `planning/plan.R1.md`.
+    @Relationship(deleteRule: .cascade, inverse: \Revision.note)
+    var revisions: [Revision] = []
+
+    /// The revision the prod UI shows / shares. Invariant: always resolves to a
+    /// member of `revisions` (the seeding initializer guarantees ≥1 revision and a
+    /// valid pointer; every op preserves it).
+    var activeRevisionID: UUID = UUID()
+
     init(
         id: UUID = UUID(),
         createdAt: Date = .now,
@@ -56,6 +69,16 @@ final class Note {
         self.originalTranscript = originalTranscript
         self.cleanedTranscript = cleanedTranscript
         self.cleanupModel = cleanupModel
+        // Seed the history with the initial machine transcription so the
+        // ≥1-revision / valid-active invariant holds by construction.
+        let seed = Revision(
+            createdAt: createdAt,
+            kind: .transcription,
+            text: transcript,
+            modelLabel: transcriptionModel
+        )
+        self.revisions = [seed]
+        self.activeRevisionID = seed.id
     }
 }
 
@@ -126,5 +149,102 @@ extension Note {
     func clearCleanup() {
         cleanedTranscript = nil
         cleanupModel = nil
+    }
+}
+
+// MARK: - Revision history (R1)
+
+extension Note {
+    /// History in chronological order. SwiftData to-many relationships are
+    /// unordered, so we sort by `createdAt`; ops stamp strictly-increasing
+    /// timestamps (`nextTimestamp`) so the order is deterministic.
+    var orderedRevisions: [Revision] {
+        revisions.sorted { $0.createdAt < $1.createdAt }
+    }
+
+    /// The revision the prod UI shows. Resolves `activeRevisionID` against the
+    /// history; the fallback is unreachable given the ≥1-revision invariant but
+    /// keeps this non-optional and crash-free.
+    var activeRevision: Revision {
+        revisions.first { $0.id == activeRevisionID } ?? orderedRevisions.last!
+    }
+
+    /// The current displayed (and shared) text — the active revision's text.
+    var displayText: String { activeRevision.text }
+
+    /// The most recent machine transcription — the re-transcribe target and the
+    /// "original" for a prod compare. `nil` only if the invariant is violated.
+    var latestTranscription: Revision? {
+        orderedRevisions.last { $0.kind == .transcription }
+    }
+
+    /// Append a fresh machine transcription (initial or re-transcribe) and make it
+    /// active. Rooted at the audio, so `derivedFromID` is `nil`.
+    @discardableResult
+    func appendTranscription(text: String, modelLabel: String?) -> Revision {
+        append(.init(createdAt: nextTimestamp(), kind: .transcription,
+                     text: text, modelLabel: modelLabel))
+    }
+
+    /// Append an LLM-cleaned revision derived from the active revision, and make it
+    /// active.
+    @discardableResult
+    func appendCleanup(text: String, modelLabel: String?) -> Revision {
+        append(.init(createdAt: nextTimestamp(), kind: .cleanup, text: text,
+                     modelLabel: modelLabel, derivedFromID: activeRevisionID))
+    }
+
+    /// Apply a hand-edited text. Returns the new revision, or `nil` when no
+    /// revision was created:
+    /// - `text` equals the active revision ⇒ no-op (nothing changed).
+    /// - `text` equals the active revision's *parent* ⇒ the edit was undone back to
+    ///   where it came from; re-activate the parent (Q1) rather than stack a
+    ///   redundant revision. This is the new-model "edit back to original ⇒
+    ///   pristine" behavior.
+    /// Otherwise append an `.edit` derived from the active revision and activate it.
+    @discardableResult
+    func appendEdit(_ text: String) -> Revision? {
+        let active = activeRevision
+        if text == active.text { return nil }
+        if let parentID = active.derivedFromID,
+           let parent = revisions.first(where: { $0.id == parentID }),
+           parent.text == text {
+            activeRevisionID = parent.id
+            return nil
+        }
+        return append(.init(createdAt: nextTimestamp(), kind: .edit, text: text,
+                            derivedFromID: active.id))
+    }
+
+    /// Move the active pointer one step up the derivation chain — to the active
+    /// revision's parent, or to the latest transcription when it's rooted. A pure
+    /// pointer move: history is preserved, nothing is deleted (Q1). No-op when
+    /// already on the latest transcription.
+    func revert() {
+        let active = activeRevision
+        if let parentID = active.derivedFromID,
+           revisions.contains(where: { $0.id == parentID }) {
+            activeRevisionID = parentID
+        } else if let transcription = latestTranscription {
+            activeRevisionID = transcription.id
+        }
+    }
+
+    // MARK: Internals
+
+    @discardableResult
+    private func append(_ revision: Revision) -> Revision {
+        revisions.append(revision)
+        activeRevisionID = revision.id
+        return revision
+    }
+
+    /// A timestamp strictly greater than every existing revision's, so chronological
+    /// order is deterministic even when appends happen within the same instant
+    /// (real wall-clock when it's already ahead, nudged forward only on a tie).
+    private func nextTimestamp() -> Date {
+        let latest = revisions.map(\.createdAt).max() ?? .distantPast
+        let now = Date.now
+        return now > latest ? now : latest.addingTimeInterval(0.001)
     }
 }
