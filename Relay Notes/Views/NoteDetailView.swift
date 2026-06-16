@@ -139,11 +139,18 @@ struct NoteDetailView: View {
             Text("Your edits will be discarded and the original transcription restored.")
         }
         .sheet(item: $reOutcome) { outcome in
-            ReTranscribeOutcomeSheet(
-                currentModel: note.transcriptionModel,
-                currentTranscript: note.transcript,
-                outcome: outcome,
-                onReplace: {
+            RevisionComparisonView(
+                title: "Re-transcription",
+                left: .init(
+                    label: "Current — \(note.transcriptionModel ?? "Unknown")",
+                    text: note.transcript
+                ),
+                right: .init(
+                    label: "New — \(outcome.modelLabel)",
+                    text: outcome.transcript,
+                    emphasized: true
+                ),
+                primary: .init(title: "Replace") {
                     note.transcript = outcome.transcript
                     note.transcriptionModel = outcome.modelLabel
                     // A re-transcription is a fresh machine baseline, so any prior
@@ -152,7 +159,7 @@ struct NoteDetailView: View {
                     try? modelContext.save()
                     reOutcome = nil
                 },
-                onKeep: { reOutcome = nil }
+                secondary: .init(title: "Keep original") { reOutcome = nil }
             )
         }
         .alert(
@@ -167,15 +174,21 @@ struct NoteDetailView: View {
             Text(reErrorMessage ?? "")
         }
         .sheet(item: $cleanOutcome) { outcome in
-            CleanupOutcomeSheet(
-                outcome: outcome,
-                onAccept: {
+            RevisionComparisonView(
+                title: "Clean up",
+                left: .init(label: "Original", text: outcome.raw),
+                right: .init(
+                    label: "Cleaned — \(outcome.modelLabel)",
+                    text: outcome.cleaned,
+                    emphasized: true
+                ),
+                primary: .init(title: "Accept") {
                     note.applyCleanup(outcome.cleaned, model: outcome.modelLabel)
                     try? modelContext.save()
                     showOriginal = false
                     cleanOutcome = nil
                 },
-                onDecline: { cleanOutcome = nil }
+                secondary: .init(title: "Discard") { cleanOutcome = nil }
             )
         }
         .alert(
@@ -462,112 +475,5 @@ struct NoteDetailView: View {
         let mins = total / 60
         let secs = total % 60
         return String(format: "%d:%02d", mins, secs)
-    }
-}
-
-/// Side-by-side "current vs new" view for a re-transcription, so the engine A/B
-/// is a visible comparison before deciding. Non-destructive until "Replace".
-private struct ReTranscribeOutcomeSheet: View {
-    let currentModel: String?
-    let currentTranscript: String
-    let outcome: ReTranscriber.Outcome
-    let onReplace: () -> Void
-    let onKeep: () -> Void
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    transcriptSection(
-                        label: "Current — \(currentModel ?? "Unknown")",
-                        text: currentTranscript,
-                        emphasized: false
-                    )
-                    Divider()
-                    transcriptSection(
-                        label: "New — \(outcome.modelLabel)",
-                        text: outcome.transcript,
-                        emphasized: true
-                    )
-                }
-                .padding()
-            }
-            .navigationTitle("Re-transcription")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Keep original", action: onKeep)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Replace", action: onReplace)
-                        .fontWeight(.semibold)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func transcriptSection(label: String, text: String, emphasized: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(emphasized ? Color.accentColor : .secondary)
-            Text(text.isEmpty ? "—" : text)
-                .font(.body)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
-        }
-    }
-}
-
-/// Before/after view for a cleanup run — the raw transcript vs the cleaned
-/// candidate, so the user reviews before keeping. Non-destructive until "Accept";
-/// the raw transcript is preserved either way.
-private struct CleanupOutcomeSheet: View {
-    let outcome: Cleaner.Outcome
-    let onAccept: () -> Void
-    let onDecline: () -> Void
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    transcriptSection(label: "Original", text: outcome.raw, emphasized: false)
-                    Divider()
-                    transcriptSection(
-                        label: "Cleaned — \(outcome.modelLabel)",
-                        text: outcome.cleaned,
-                        emphasized: true
-                    )
-                }
-                .padding()
-            }
-            .navigationTitle("Clean up")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Discard", action: onDecline)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Accept", action: onAccept)
-                        .fontWeight(.semibold)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func transcriptSection(label: String, text: String, emphasized: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(emphasized ? Color.accentColor : .secondary)
-            Text(text.isEmpty ? "—" : text)
-                .font(.body)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
-        }
     }
 }

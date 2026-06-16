@@ -63,10 +63,20 @@ re-transcription is an in-note revision, not a clone).
 | Stage | What | State |
 |---|---|---|
 | **R1.0** | `Revision` `@Model` + `RevisionKind` + `Note` `[Revision]` relationship + `activeRevisionID` + seeding initializer + pure mutation helpers (append transcription/edit/cleanup, move active, revert). Added **alongside** the legacy slots (strangler-fig, see note below). | ✅ **DONE — simulator-validated 2026-06-15.** `Relay Notes/Models/Revision.swift` + `Note` additions + `RevisionTests` (13, incl. the §2 stale-cleanup bug now unrepresentable + a SwiftData round-trip). `Revision` auto-registers via the relationship (no explicit schema change needed; the round-trip test confirms it). Full suite green (199 tests). |
-| **R1.1** | Rewire consumers (`RecorderViewModel`, `Cleaner`, `ReTranscriber`, `SampleNotes`) to append revisions instead of writing slots. | ☐ not started |
-| **R1.2** | `RevisionComparisonView(left:right:)` — consolidate `ReTranscribeOutcomeSheet` + `CleanupOutcomeSheet` into one before/after view (no diff engine). | ☐ not started |
-| **R1.3** | Prod `NoteDetailView` over the new model — present the active revision; Edit/Clean up/Revert/Compare-vs-original as revision ops. **Then remove the legacy slots** (`transcript`/`originalTranscript`/`cleanedTranscript`/`transcriptionModel`/`cleanupModel` + their helpers + the legacy `NoteTests` cases), and redefine `isEdited`/`isCleaned` off `activeRevision`. | ☐ not started |
-| **R1.4** | Debug revision-history surface (`#if DEBUG`) — full list, activate any, delete any, compare any two, show provenance + `derivedFrom`. | ☐ not started |
+| **R1.1** | `RevisionComparisonView` — consolidate `ReTranscribeOutcomeSheet` + `CleanupOutcomeSheet` into one before/after view (no diff engine). *Pulled forward from R1.2 — the only remaining decoupled piece (see note below).* | ✅ **DONE — simulator-validated 2026-06-15.** `Relay Notes/Views/RevisionComparisonView.swift` (generic `title` + two `Side`s + primary/secondary `Action`); both `NoteDetailView` sheets now use it; the two private structs deleted. Pure refactor, no data-flow change. Full suite green (199 tests). |
+| **R1.2** | **The atomic consumer + presentation flip.** Move `NoteDetailView` (present + Edit/Clean up/Revert/Compare via ops), `NotesListView` (row + search read `displayText`), and `Cleaner.clean` (clean the active text) onto the revision ops **together**; **then remove the legacy slots** (`transcript`/`originalTranscript`/`cleanedTranscript`/`transcriptionModel`/`cleanupModel` + their helpers + the legacy `NoteTests` cases) and redefine `isEdited`/`isCleaned` off `activeRevision`. Merges the old R1.1 (rewire) + R1.3 (presentation) because they share note text as the source of truth and can't flip independently. | ☐ not started |
+| **R1.3** | Debug revision-history surface (`#if DEBUG`) — full list, activate any, delete any, compare any two, show provenance + `derivedFrom`. | ☐ not started |
+
+> [!note] Sequencing refinement (2026-06-15, during R1.1) — the consumer rewire is coupled
+> The old R1.1 ("rewire consumers") can't be done independently of the old R1.3 ("prod
+> `NoteDetailView`"). During the strangler-fig window the **legacy slots are the source of truth**:
+> the detail view still reads/writes `note.transcript` directly. Migrating any "current text"
+> reader (`NotesListView`, `Cleaner.clean`, the detail view's own presentation) to `displayText`
+> while the writer still mutates legacy slots would **diverge** — a legacy edit updates
+> `note.transcript` but not the active revision. So all reads + writes of note text must flip
+> **together** (now R1.2). The genuinely decoupled work — the `RevisionComparisonView` refactor —
+> was pulled forward as R1.1. `RecorderViewModel`/`SampleNotes` need no change: the seeding `init`
+> already gives them a transcription revision.
 
 > [!note] Sequencing refinement (2026-06-15, during R1.0) — strangler-fig, not big-bang
 > R1.0 cannot literally ship "a `Note` with no legacy fields": `NoteDetailView` and the recorder
@@ -350,19 +360,23 @@ is a pointer move), the §2 stale-cleanup bug proven unrepresentable, and a Swif
 `Revision` registers via the relationship (round-trip test confirms — no explicit schema change).
 Full suite green (199 tests).
 
-### R1.1 — Rewire consumers
-`RecorderViewModel`, `Cleaner`/`ReTranscriber` accept paths, `SampleNotes`. **Gate:** record →
-edit → clean → re-transcribe round-trips through revisions; stale-cleanup bug confirmed gone.
+### R1.1 — `RevisionComparisonView` ✅ DONE (simulator-validated 2026-06-15)
+`Relay Notes/Views/RevisionComparisonView.swift` — generic `title` + two `Side`s + primary/secondary
+`Action`. Both `NoteDetailView` sheets reworked onto it; the two private sheet structs deleted. Pure
+refactor, no data-flow change (accept/decline flows unchanged). Pulled forward from R1.2 as the only
+decoupled remaining work. Full suite green (199 tests).
 
-### R1.2 — `RevisionComparisonView`
-Consolidate the two sheets. **Gate:** accept/decline flows unchanged for the user.
+### R1.2 — The atomic consumer + presentation flip
+Flip `NoteDetailView` (present active revision; Edit → `appendEdit`, Clean up → `appendCleanup`,
+Revert → `revert`, Compare via `RevisionComparisonView`; indicators off `activeRevision`),
+`NotesListView` (row + search read `displayText`), and `Cleaner.clean` (clean the active text) onto
+the ops **in one change** — they share note text as the source of truth. Then delete the legacy
+slots + their helpers + the legacy `NoteTests` cases, and redefine `isEdited`/`isCleaned` off
+`activeRevision`. **Gate:** prod UX behavior-identical to today *plus* correct after a
+clean → re-transcribe (the §2 stale-cleanup bug is gone at the UI, not just the model); list and
+detail agree after an edit; suite green.
 
-### R1.3 — Prod `NoteDetailView`
-Present active revision; Edit/Clean up/Revert/Compare as revision ops; indicators off
-`activeRevision`. **Gate:** prod UX is behavior-identical to today (plus correct after
-re-transcribe).
-
-### R1.4 — Debug revision-history surface (`#if DEBUG`)
+### R1.3 — Debug revision-history surface (`#if DEBUG`)
 Timeline list, activate/delete/compare-any-two, provenance + lineage. **Gate:** can compare two
 transcription-revisions; deleting a revision preserves the invariant (≥1 revision, valid active).
 
