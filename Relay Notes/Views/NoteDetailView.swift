@@ -1,11 +1,11 @@
 import SwiftData
 import SwiftUI
 
+/// Minimal prod note view (R1.2): shows the note's *active* revision and lets the
+/// user move it forward — Clean up, manual Edit, Revert. Re-transcription and the
+/// full revision history live in the `#if DEBUG` surface (R1.3), not here.
 struct NoteDetailView: View {
     @Bindable var note: Note
-    /// Injected from the list; `nil` in previews → the re-transcribe control is
-    /// hidden. Lets you re-run this note's saved audio through another engine.
-    var reTranscriber: ReTranscriber? = nil
     /// Cleanup controller; `nil` in previews → the "Clean up" control is hidden.
     var cleaner: Cleaner? = nil
     /// Deep-link to the Tuning sheet (for the "Set up cleanup model" link).
@@ -21,15 +21,9 @@ struct NoteDetailView: View {
     @State private var transcriptDraft: String = ""
     @State private var showRevertConfirmation = false
     @FocusState private var transcriptFocused: Bool
-    @State private var isReTranscribing = false
-    @State private var reOutcome: ReTranscriber.Outcome?
-    @State private var reErrorMessage: String?
     @State private var isCleaning = false
     @State private var cleanOutcome: Cleaner.Outcome?
     @State private var cleanErrorMessage: String?
-    /// When a cleaned version exists, the detail shows it by default; this flips to
-    /// the raw transcript. Always raw while editing (editing operates on raw).
-    @State private var showOriginal = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -40,16 +34,12 @@ struct NoteDetailView: View {
                         Text(note.createdAt.formatted(date: .complete, time: .shortened))
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        if let model = note.transcriptionModel {
-                            Label("Transcribed with \(model)", systemImage: "waveform")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        provenanceLabel
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         if !isEditingTranscript {
-                            reTranscribeControl
                             cleanUpControl
-                            cleanedIndicator
-                            editedIndicator
+                            revertControl
                         }
                     }
                     transcriptSection
@@ -82,10 +72,10 @@ struct NoteDetailView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     ShareLink(
-                        item: displayedTranscript,
+                        item: note.displayText,
                         subject: Text(note.displayTitle)
                     )
-                    .disabled(displayedTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(note.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityLabel("Share transcript")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -126,66 +116,30 @@ struct NoteDetailView: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This will permanently delete the transcript and the audio file.")
+            Text("This will permanently delete the note and its audio file.")
         }
         .confirmationDialog(
-            "Revert to the original transcription?",
+            "Revert to the previous version?",
             isPresented: $showRevertConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Revert", role: .destructive) { revertTranscript() }
+            Button("Revert", role: .destructive) { revertActiveRevision() }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Your edits will be discarded and the original transcription restored.")
-        }
-        .sheet(item: $reOutcome) { outcome in
-            RevisionComparisonView(
-                title: "Re-transcription",
-                left: .init(
-                    label: "Current — \(note.transcriptionModel ?? "Unknown")",
-                    text: note.transcript
-                ),
-                right: .init(
-                    label: "New — \(outcome.modelLabel)",
-                    text: outcome.transcript,
-                    emphasized: true
-                ),
-                primary: .init(title: "Replace") {
-                    note.transcript = outcome.transcript
-                    note.transcriptionModel = outcome.modelLabel
-                    // A re-transcription is a fresh machine baseline, so any prior
-                    // hand-edit no longer applies — the note returns to pristine.
-                    note.originalTranscript = nil
-                    try? modelContext.save()
-                    reOutcome = nil
-                },
-                secondary: .init(title: "Keep original") { reOutcome = nil }
-            )
-        }
-        .alert(
-            "Couldn't re-transcribe",
-            isPresented: Binding(
-                get: { reErrorMessage != nil },
-                set: { if !$0 { reErrorMessage = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(reErrorMessage ?? "")
+            Text("This shows the version before this change. Your other versions are kept.")
         }
         .sheet(item: $cleanOutcome) { outcome in
             RevisionComparisonView(
                 title: "Clean up",
-                left: .init(label: "Original", text: outcome.raw),
+                left: .init(label: "Current", text: outcome.raw),
                 right: .init(
                     label: "Cleaned — \(outcome.modelLabel)",
                     text: outcome.cleaned,
                     emphasized: true
                 ),
                 primary: .init(title: "Accept") {
-                    note.applyCleanup(outcome.cleaned, model: outcome.modelLabel)
+                    note.appendCleanup(text: outcome.cleaned, modelLabel: outcome.modelLabel)
                     try? modelContext.save()
-                    showOriginal = false
                     cleanOutcome = nil
                 },
                 secondary: .init(title: "Discard") { cleanOutcome = nil }
@@ -204,58 +158,35 @@ struct NoteDetailView: View {
         }
     }
 
-    /// "Re-transcribe with…" menu, shown only when a reprocessor is injected and
-    /// the note's audio is still on disk. While a re-run is in flight it becomes
-    /// a progress label. Re-running an engine (incl. the one that produced the
-    /// note) is allowed — useful as a spot-check, not just a cross-engine A/B.
+    /// Provenance of what's currently shown — the active revision's kind + model.
     @ViewBuilder
-    private var reTranscribeControl: some View {
-        if let reTranscriber, reTranscriber.audioExists(for: note) {
-            if isReTranscribing {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text("Re-transcribing…")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.top, 2)
+    private var provenanceLabel: some View {
+        let active = note.activeRevision
+        switch active.kind {
+        case .transcription:
+            if let model = active.modelLabel {
+                Label("Transcribed with \(model)", systemImage: "waveform")
             } else {
-                Menu {
-                    ForEach(reTranscriber.availableEngines, id: \.self) { engine in
-                        Button(engine.displayName) {
-                            runReTranscribe(reTranscriber, using: engine)
-                        }
-                    }
-                } label: {
-                    Label("Re-transcribe", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.caption)
-                }
-                .padding(.top, 2)
+                Label("Transcribed", systemImage: "waveform")
+            }
+        case .edit:
+            Label("Edited", systemImage: "pencil")
+        case .cleanup:
+            if let model = active.modelLabel {
+                Label("Cleaned with \(model)", systemImage: "sparkles")
+            } else {
+                Label("Cleaned", systemImage: "sparkles")
             }
         }
     }
 
-    private func runReTranscribe(_ reTranscriber: ReTranscriber, using engine: TranscriptionEngine) {
-        isReTranscribing = true
-        reErrorMessage = nil
-        Task {
-            defer { isReTranscribing = false }
-            do {
-                reOutcome = try await reTranscriber.retranscribe(note, using: engine)
-            } catch {
-                reErrorMessage = ReTranscriber.userMessage(for: error)
-            }
-        }
-    }
-
-    /// "Clean up" affordance — shown only for a not-yet-cleaned note with text and
-    /// a cleaner injected. Becomes a progress label while running; when the model
-    /// isn't downloaded it's a "Set up cleanup model" link that deep-links to the
-    /// Tuning sheet. (A cleaned note shows `cleanedIndicator` instead.)
+    /// "Clean up" affordance — shown when there's text to clean and the active
+    /// revision isn't already a cleanup. Becomes a progress label while running;
+    /// when the model isn't downloaded it's a "Set up cleanup model" deep-link.
     @ViewBuilder
     private var cleanUpControl: some View {
         if let cleaner,
-           !note.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !note.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            !note.isCleaned {
             if isCleaning {
                 HStack(spacing: 6) {
@@ -286,29 +217,17 @@ struct NoteDetailView: View {
         }
     }
 
-    /// Shown once a note has a cleaned version: provenance + a raw/cleaned toggle +
-    /// a "Remove" affordance (drops the cleaned copy; the raw transcript is always
-    /// preserved). Mirrors `editedIndicator`'s inline caption style.
+    /// "Revert" — shown when the active revision is derived from another (an edit or
+    /// a cleanup), i.e. there's a previous version to step back to. Non-destructive:
+    /// it moves the active pointer; the history is preserved.
     @ViewBuilder
-    private var cleanedIndicator: some View {
-        if note.isCleaned {
-            VStack(alignment: .leading, spacing: 4) {
-                if let model = note.cleanupModel {
-                    Label("Cleaned with \(model)", systemImage: "sparkles")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                HStack(spacing: 12) {
-                    Button(showOriginal ? "Show cleaned" : "Show original") {
-                        showOriginal.toggle()
-                    }
-                    Button("Remove", role: .destructive) {
-                        note.clearCleanup()
-                        try? modelContext.save()
-                        showOriginal = false
-                    }
-                }
-                .font(.caption)
+    private var revertControl: some View {
+        if note.activeRevision.derivedFromID != nil {
+            Button {
+                showRevertConfirmation = true
+            } label: {
+                Label("Revert", systemImage: "arrow.uturn.backward")
+                    .font(.caption)
             }
             .padding(.top, 2)
         }
@@ -327,21 +246,9 @@ struct NoteDetailView: View {
         }
     }
 
-    /// The transcript body: read-only selectable text, or an expanding multi-line
-    /// editor while in edit mode. `TextField(axis: .vertical)` (not `TextEditor`)
-    /// so it grows with content and scrolls naturally inside the outer `ScrollView`.
-    /// True when the cleaned version should be shown — it exists, the user hasn't
-    /// toggled to raw, and we're not editing (editing always operates on raw).
-    private var showingCleaned: Bool {
-        note.isCleaned && !showOriginal && !isEditingTranscript
-    }
-
-    /// The text currently displayed (and shared): the cleaned version when
-    /// `showingCleaned`, otherwise the canonical raw transcript.
-    private var displayedTranscript: String {
-        showingCleaned ? (note.cleanedTranscript ?? note.transcript) : note.transcript
-    }
-
+    /// The note body: read-only selectable text, or an expanding multi-line editor
+    /// while editing. `TextField(axis: .vertical)` (not `TextEditor`) so it grows
+    /// with content and scrolls naturally inside the outer `ScrollView`.
     @ViewBuilder
     private var transcriptSection: some View {
         if isEditingTranscript {
@@ -350,31 +257,15 @@ struct NoteDetailView: View {
                 .focused($transcriptFocused)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            Text(displayedTranscript)
+            Text(note.displayText)
                 .font(.body)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
         }
     }
 
-    /// Shown only once a note has been hand-edited: an "Edited" tag plus a
-    /// revert-to-original affordance (guarded by a confirmation). Mirrors the
-    /// inline caption style of `reTranscribeControl`.
-    @ViewBuilder
-    private var editedIndicator: some View {
-        if note.isEdited {
-            HStack(spacing: 10) {
-                Label("Edited", systemImage: "pencil")
-                Button("Revert to original") { showRevertConfirmation = true }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.top, 2)
-        }
-    }
-
     private func beginTranscriptEdit() {
-        transcriptDraft = note.transcript
+        transcriptDraft = note.displayText
         isEditingTranscript = true
         transcriptFocused = true
     }
@@ -385,14 +276,14 @@ struct NoteDetailView: View {
     }
 
     private func commitTranscriptEdit() {
-        note.applyEditedTranscript(transcriptDraft)
+        note.appendEdit(transcriptDraft)
         try? modelContext.save()
         isEditingTranscript = false
         transcriptFocused = false
     }
 
-    private func revertTranscript() {
-        note.revertTranscript()
+    private func revertActiveRevision() {
+        note.revert()
         try? modelContext.save()
     }
 

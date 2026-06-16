@@ -6,8 +6,8 @@ struct NotesListView: View {
     @Query(sort: \Note.createdAt, order: .reverse) private var allNotes: [Note]
 
     let searchText: String
-    /// Injected from `ContentView`; `nil` in previews/sample contexts, which
-    /// hides the per-note "Re-transcribe" control in `NoteDetailView`.
+    /// Injected from `ContentView`. Reserved for the R1.3 `#if DEBUG` revision-history
+    /// surface (re-transcribe); not surfaced in the minimal prod detail view.
     let reTranscriber: ReTranscriber?
     /// Cleanup controller; `nil` in previews → hides the "Clean up" control.
     let cleaner: Cleaner?
@@ -30,7 +30,7 @@ struct NotesListView: View {
     private var filteredNotes: [Note] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return allNotes }
-        return allNotes.filter { $0.transcript.localizedCaseInsensitiveContains(trimmed) }
+        return allNotes.filter { $0.displayText.localizedCaseInsensitiveContains(trimmed) }
     }
 
     var body: some View {
@@ -58,7 +58,6 @@ struct NotesListView: View {
         .navigationDestination(for: Note.self) { note in
             NoteDetailView(
                 note: note,
-                reTranscriber: reTranscriber,
                 cleaner: cleaner,
                 onOpenSettings: onOpenSettings
             )
@@ -84,7 +83,7 @@ private struct NoteRow: View {
             Text(note.createdAt.formatted(date: .abbreviated, time: .shortened))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
-            Text(note.transcript)
+            Text(note.displayText)
                 .font(.caption)
                 .lineLimit(2)
                 .foregroundStyle(.secondary)

@@ -21,7 +21,7 @@ final class Cleaner {
         let id = UUID()
         let raw: String
         let cleaned: String
-        /// Provenance to persist on the `Note` if accepted (`Note.cleanupModel`).
+        /// Provenance to persist with the accepted cleanup revision (`modelLabel`).
         let modelLabel: String
     }
 
@@ -68,8 +68,9 @@ final class Cleaner {
         guard store.status == .ready else { throw LanguageModelError.modelUnavailable }
         let model = model ?? makeModel()
         self.model = model
-        let cleaned = try await model.clean(note.transcript, personalization: personalization())
-        return Outcome(raw: note.transcript, cleaned: cleaned, modelLabel: Self.modelLabel)
+        let raw = note.displayText
+        let cleaned = try await model.clean(raw, personalization: personalization())
+        return Outcome(raw: raw, cleaned: cleaned, modelLabel: Self.modelLabel)
     }
 
     /// Release the loaded model (~2.7 GB) + clear the MLX buffer pool. Called when

@@ -157,6 +157,27 @@ struct RevisionTests {
         #expect(note.latestTranscription?.id == r1.id)
     }
 
+    // MARK: - isEdited / isCleaned reflect the active revision
+
+    @Test func isEditedAndIsCleanedReflectActiveRevisionKind() {
+        let note = Note(audioFilename: "a.m4a", transcript: "raw")
+        #expect(note.isEdited == false)
+        #expect(note.isCleaned == false)
+
+        note.appendEdit("raw edited")
+        #expect(note.isEdited)
+        #expect(note.isCleaned == false)
+
+        note.appendCleanup(text: "Raw, cleaned.", modelLabel: "m")
+        #expect(note.isCleaned)
+        #expect(note.isEdited == false)
+
+        // Reverting off the cleanup returns the active kind to the edit.
+        note.revert()
+        #expect(note.isEdited)
+        #expect(note.isCleaned == false)
+    }
+
     // MARK: - Persistence round-trip
 
     @Test func historyAndActivePointerPersistThroughInsertAndFetch() throws {

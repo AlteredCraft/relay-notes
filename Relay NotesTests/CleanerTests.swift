@@ -113,6 +113,23 @@ struct CleanerTests {
         #expect(builds == 1)
     }
 
+    /// `Cleaner` cleans the note's *active* revision text, not the original
+    /// transcription — so cleaning after a hand-edit cleans the edited text.
+    @Test func cleanCleansActiveRevisionTextAfterEdit() async throws {
+        let tmp = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let store = try makeReadyStore(in: tmp)
+
+        let fake = RecordingLanguageModel()
+        let cleaner = Cleaner(store: store, makeModel: { fake })
+
+        let note = Note(audioFilename: "a.m4a", transcript: "original raw")
+        note.appendEdit("hand edited text")
+        let outcome = try await cleaner.clean(note)
+        #expect(await fake.lastRaw == "hand edited text")
+        #expect(outcome.raw == "hand edited text")
+    }
+
     @Test func defaultPersonalizationIsNone() async throws {
         let tmp = makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: tmp) }

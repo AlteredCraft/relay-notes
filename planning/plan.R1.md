@@ -64,8 +64,8 @@ re-transcription is an in-note revision, not a clone).
 |---|---|---|
 | **R1.0** | `Revision` `@Model` + `RevisionKind` + `Note` `[Revision]` relationship + `activeRevisionID` + seeding initializer + pure mutation helpers (append transcription/edit/cleanup, move active, revert). Added **alongside** the legacy slots (strangler-fig, see note below). | ✅ **DONE — simulator-validated 2026-06-15.** `Relay Notes/Models/Revision.swift` + `Note` additions + `RevisionTests` (13, incl. the §2 stale-cleanup bug now unrepresentable + a SwiftData round-trip). `Revision` auto-registers via the relationship (no explicit schema change needed; the round-trip test confirms it). Full suite green (199 tests). |
 | **R1.1** | `RevisionComparisonView` — consolidate `ReTranscribeOutcomeSheet` + `CleanupOutcomeSheet` into one before/after view (no diff engine). *Pulled forward from R1.2 — the only remaining decoupled piece (see note below).* | ✅ **DONE — simulator-validated 2026-06-15.** `Relay Notes/Views/RevisionComparisonView.swift` (generic `title` + two `Side`s + primary/secondary `Action`); both `NoteDetailView` sheets now use it; the two private structs deleted. Pure refactor, no data-flow change. Full suite green (199 tests). |
-| **R1.2** | **The atomic consumer + presentation flip.** Move `NoteDetailView` (present + Edit/Clean up/Revert/Compare via ops), `NotesListView` (row + search read `displayText`), and `Cleaner.clean` (clean the active text) onto the revision ops **together**; **then remove the legacy slots** (`transcript`/`originalTranscript`/`cleanedTranscript`/`transcriptionModel`/`cleanupModel` + their helpers + the legacy `NoteTests` cases) and redefine `isEdited`/`isCleaned` off `activeRevision`. Merges the old R1.1 (rewire) + R1.3 (presentation) because they share note text as the source of truth and can't flip independently. | ☐ not started |
-| **R1.3** | Debug revision-history surface (`#if DEBUG`) — full list, activate any, delete any, compare any two, show provenance + `derivedFrom`. | ☐ not started |
+| **R1.2** | **The atomic consumer + presentation flip** → **minimal prod UI** (decision: don't preserve the old UI). `NoteDetailView` now shows the active revision + moves it forward (Clean up / Edit / Revert); `NotesListView` row + search read `displayText`; `Cleaner.clean` cleans the active text. Legacy slots + helpers **removed**; `isEdited`/`isCleaned` redefined off `activeRevision`; legacy `NoteTests` replaced with `displayTitle` coverage. **Re-transcribe + the raw/cleaned toggle left prod** (re-transcribe → R1.3 debug). | ✅ **DONE — simulator-validated 2026-06-15.** 201 tests green. |
+| **R1.3** | Debug revision-history surface (`#if DEBUG`) — full list, activate any, delete any, compare any two (via `RevisionComparisonView`), **re-transcribe** (the `reTranscriber` reserved in `NotesListView`), show provenance + `derivedFrom`. | ☐ not started |
 
 > [!note] Sequencing refinement (2026-06-15, during R1.1) — the consumer rewire is coupled
 > The old R1.1 ("rewire consumers") can't be done independently of the old R1.3 ("prod
@@ -366,15 +366,20 @@ Full suite green (199 tests).
 refactor, no data-flow change (accept/decline flows unchanged). Pulled forward from R1.2 as the only
 decoupled remaining work. Full suite green (199 tests).
 
-### R1.2 — The atomic consumer + presentation flip
-Flip `NoteDetailView` (present active revision; Edit → `appendEdit`, Clean up → `appendCleanup`,
-Revert → `revert`, Compare via `RevisionComparisonView`; indicators off `activeRevision`),
-`NotesListView` (row + search read `displayText`), and `Cleaner.clean` (clean the active text) onto
-the ops **in one change** — they share note text as the source of truth. Then delete the legacy
-slots + their helpers + the legacy `NoteTests` cases, and redefine `isEdited`/`isCleaned` off
-`activeRevision`. **Gate:** prod UX behavior-identical to today *plus* correct after a
-clean → re-transcribe (the §2 stale-cleanup bug is gone at the UI, not just the model); list and
-detail agree after an edit; suite green.
+### R1.2 — Minimal prod UI flip ✅ DONE (simulator-validated 2026-06-15)
+Decision (Sam): **don't preserve the old UI** — replace with a minimal prod UI where the user views
+the note (active revision) and moves it forward (Clean up / Edit / Revert). Done in one change:
+`NoteDetailView` rewritten (active-revision body; provenance label off `activeRevision.kind`;
+Edit → `appendEdit`, Clean up → `appendCleanup`, Revert → `revert`; cleanup before/after via
+`RevisionComparisonView`); `NotesListView` row + search read `displayText`; `Cleaner.clean` cleans
+`note.displayText`. Legacy slots (`transcript`/`originalTranscript`/`cleanedTranscript`/
+`transcriptionModel`/`cleanupModel`) + helpers deleted; the seeding `init` keeps the
+`transcript:`/`transcriptionModel:` *param names* (so `RecorderViewModel`/`SampleNotes` are
+untouched) but stores no slots. `isEdited`/`isCleaned` redefined off `activeRevision`. Legacy
+`NoteTests` replaced with `displayTitle` tests; added `Cleaner` cleans-active-text test +
+`isEdited/isCleaned` revision test. **Dropped from prod:** re-transcribe (→ R1.3 debug; `reTranscriber`
+still injected into `NotesListView`, reserved) and the raw/cleaned toggle. The §2 stale-cleanup
+class is gone (re-transcribe now appends a fresh active transcription). 201 tests green.
 
 ### R1.3 — Debug revision-history surface (`#if DEBUG`)
 Timeline list, activate/delete/compare-any-two, provenance + lineage. **Gate:** can compare two
