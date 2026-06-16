@@ -1,11 +1,15 @@
 ---
 title: R1 — Note Revision History (versioned, immutable-rooted) — Design & Implementation Plan
 date: 2026-06-15
-status: living
+status: complete
 audience: an engineer/agent executing the Note model refactor
 ---
 
 # R1 — Note revision history: design & implementation plan
+
+> [!done] R1 complete (2026-06-16). R1.0–R1.2 shipped to `main` and device-validated; R1.3 (the
+> `#if DEBUG` history browser) was **dropped** in favor of a re-runnable WER benchmark — **GH issue
+> #17**. See §1 and the R1.3 entry in §8 for the rationale. The rest of this doc is the as-built record.
 
 This document is a **self-contained handoff** for R1 — replacing the `Note` model's three
 ad-hoc text slots (`transcript` / `originalTranscript` / `cleanedTranscript`) with a single
@@ -65,7 +69,7 @@ re-transcription is an in-note revision, not a clone).
 | **R1.0** | `Revision` `@Model` + `RevisionKind` + `Note` `[Revision]` relationship + `activeRevisionID` + seeding initializer + pure mutation helpers (append transcription/edit/cleanup, move active, revert). Added **alongside** the legacy slots (strangler-fig, see note below). | ✅ **DONE — simulator-validated 2026-06-15.** `Relay Notes/Models/Revision.swift` + `Note` additions + `RevisionTests` (13, incl. the §2 stale-cleanup bug now unrepresentable + a SwiftData round-trip). `Revision` auto-registers via the relationship (no explicit schema change needed; the round-trip test confirms it). Full suite green (199 tests). |
 | **R1.1** | `RevisionComparisonView` — consolidate `ReTranscribeOutcomeSheet` + `CleanupOutcomeSheet` into one before/after view (no diff engine). *Pulled forward from R1.2 — the only remaining decoupled piece (see note below).* | ✅ **DONE — simulator-validated 2026-06-15.** `Relay Notes/Views/RevisionComparisonView.swift` (generic `title` + two `Side`s + primary/secondary `Action`); both `NoteDetailView` sheets now use it; the two private structs deleted. Pure refactor, no data-flow change. Full suite green (199 tests). |
 | **R1.2** | **The atomic consumer + presentation flip** → **minimal prod UI** (decision: don't preserve the old UI). `NoteDetailView` now shows the active revision + moves it forward (Clean up / Edit / Revert); `NotesListView` row + search read `displayText`; `Cleaner.clean` cleans the active text. Legacy slots + helpers **removed**; `isEdited`/`isCleaned` redefined off `activeRevision`; legacy `NoteTests` replaced with `displayTitle` coverage. **Re-transcribe + the raw/cleaned toggle left prod** (re-transcribe → R1.3 debug). | ✅ **DONE — simulator-validated 2026-06-15.** 201 tests green. |
-| **R1.3** | Debug revision-history surface (`#if DEBUG`) — full list, activate any, delete any, compare any two (via `RevisionComparisonView`), **re-transcribe** (the `reTranscriber` reserved in `NotesListView`), show provenance + `derivedFrom`. | ☐ not started |
+| **R1.3** | ~~Debug revision-history surface (`#if DEBUG`)~~ | 🚫 **DROPPED (2026-06-16, Sam).** The revision model already gives prod its value (revert + compare); a debug *browser* over the history (activate/delete/compare/re-transcribe) added UI complication for a debugging-only need. The real need — measuring how alternate engines transcribe our audio — is better served by a re-runnable **WER benchmark** than a throwaway in-app screen. Tracked in **GH issue #17**. **R1 is complete at R1.2.** |
 
 > [!note] Sequencing refinement (2026-06-15, during R1.1) — the consumer rewire is coupled
 > The old R1.1 ("rewire consumers") can't be done independently of the old R1.3 ("prod
@@ -381,33 +385,24 @@ untouched) but stores no slots. `isEdited`/`isCleaned` redefined off `activeRevi
 still injected into `NotesListView`, reserved) and the raw/cleaned toggle. The §2 stale-cleanup
 class is gone (re-transcribe now appends a fresh active transcription). 201 tests green.
 
-### R1.3 — Debug revision-history surface (`#if DEBUG`) — cold-start handoff
-**This is the only remaining R1 stage; R1.0–R1.2 are on `main` and device-validated (2026-06-16).**
-A fresh session can start here. Build a `#if DEBUG` view over a note's full revision history.
+### R1.3 — Debug revision-history surface (`#if DEBUG`) — 🚫 DROPPED (2026-06-16, Sam)
+**R1 is complete at R1.2** (on `main`, device-validated 2026-06-16). R1.3 was going to be a
+`#if DEBUG` browser over a note's full revision history (timeline, activate/delete/compare,
+re-transcribe). It was dropped before implementation.
 
-What's already in place to build on:
-- **Model + ops** (`Note`, `Revision`): `orderedRevisions`, `activeRevision`, `activeRevisionID`,
-  `latestTranscription`, `appendTranscription`, `revert`, `derivedFromID` lineage. Activating a
-  revision = set `note.activeRevisionID = rev.id` + `try? context.save()`. Deleting one = remove
-  from `note.revisions` + re-point `activeRevisionID` if it pointed at the deleted one (preserve the
-  ≥1-revision invariant; never delete the last).
-- **Comparison UI**: `RevisionComparisonView(title:left:right:primary:secondary:)` — reuse it for
-  "compare any two revisions" (it's already generic; the prod cleanup sheet uses it).
-- **Re-transcribe**: `ReTranscriber` is built in `ContentView` and threaded to `NotesListView`'s
-  `reTranscriber` property (currently unused — *reserved for this stage*, see its doc comment). It
-  produces a `ReTranscriber.Outcome { transcript, modelLabel }`; keep its result with
-  `note.appendTranscription(text:modelLabel:)`. `availableEngines`/`audioExists(for:)` still work.
+**Why dropped:** the revision model already delivers its prod value — revert and compare-with-original
+work without a history browser. R1.3 would have added non-trivial UI (selection-mode compare, per-row
+delete, a re-transcribe menu) purely to serve a *debugging* need. Discussing the UI surfaced that the
+underlying need is **"measure how alternate engines transcribe our audio,"** which is better met by a
+durable, re-runnable **WER benchmark** than a throwaway in-app screen — especially since a tripped-up
+transcript bounds what cleanup can recover (see [[cleanup-model-next]] memory). That work is tracked
+separately in **GH issue #17** (transcriber-only WER over a fixed corpus; post-cleanup WER out of scope).
 
-Suggested entry point (decide here, not pre-committed): a `#if DEBUG` toolbar button in
-`NoteDetailView` that presents a sheet listing `orderedRevisions` (kind, `modelLabel`, `createdAt`,
-`derivedFromID` lineage, an "active" marker), with per-row Make-active / Delete and a Compare-two
-action, plus a Re-transcribe menu. Gate the whole surface on `#if DEBUG` so it compiles out of prod
-sideloads (Q2).
-
-**Gate:** can compare two transcription-revisions; activating/deleting a revision preserves the
-invariant (≥1 revision, valid active); re-transcribe appends an active `.transcription`. Add
-sim-safe `NoteTests`/`RevisionTests` for any new *pure* delete/activate helper added to `Note`
-(e.g. a `deleteRevision(_:)` that maintains the invariant).
+**Consequence for the code:** `NotesListView.reTranscriber` (reserved "for the R1.3 surface") now has
+**no consumer**. Leave it or remove it as part of #17 — the WER harness is the natural home for the
+file-based re-transcribe path (`Transcriber.transcribe`), not the prod list view. `RevisionComparisonView`
+stays in prod use (the cleanup before/after sheet). No model op was added (the planned invariant-preserving
+`deleteRevision` is unneeded — no UI deletes individual revisions).
 
 ---
 
