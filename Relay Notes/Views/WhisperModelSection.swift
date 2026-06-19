@@ -1,18 +1,8 @@
-import OSLog
 import SwiftUI
 
-/// Settings section that drives the on-device Whisper model lifecycle by
-/// observing `WhisperModelStore.status`:
-///   - `.missing`     → download button (with size hint)
-///   - `.downloading` → progress bar + cancel
-///   - `.ready`       → "Installed" + delete
-///   - `.failed`      → generic actionable message + retry
-///
-/// The download runs in an **unstructured** `Task` (not `.task`) so it survives
-/// the Settings sheet being dismissed — the store outlives the sheet and the
-/// user can reopen Settings to see live progress. Status is the single source
-/// of truth, so the thrown error from `download()` is logged (full detail) and
-/// otherwise discarded; the UI re-renders off the store's `.failed(reason:)`.
+/// Settings section driving the on-device Whisper model lifecycle. A thin
+/// wrapper over `ModelDownloadSection` with Whisper's copy and the post-delete
+/// engine-availability reconcile.
 struct WhisperModelSection: View {
     let store: WhisperModelStore
 
@@ -21,85 +11,21 @@ struct WhisperModelSection: View {
     /// `.whisperMLX` engine selection). Defaults to a no-op for previews.
     var onDeleted: () -> Void = {}
 
-    @State private var showDeleteConfirmation = false
-
-    private static let logger = Logger(
-        subsystem: "alteredcraft.Relay-Notes",
-        category: "WhisperModelStore"
-    )
-
     var body: some View {
-        Section {
-            content
-        } header: {
-            Text("On-device model")
-        } footer: {
-            Text("Whisper transcribes fully on-device. The model is about 480 MB and downloads once — delete it anytime to reclaim the space.")
-        }
-        .alert("Delete the on-device model?", isPresented: $showDeleteConfirmation) {
-            Button("Delete", role: .destructive) { delete() }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("You'll need to download it again (about 480 MB) to use on-device Whisper.")
-        }
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        switch store.status {
-        case .missing:
-            Button("Download model (≈480 MB)") { startDownload() }
-
-        case let .downloading(progress):
-            VStack(alignment: .leading, spacing: 10) {
-                ProgressView(value: progress) {
-                    Text("Downloading… \(Int((progress * 100).rounded()))%")
-                        .font(.subheadline)
-                }
-                Button("Cancel", role: .cancel) { store.cancelDownload() }
-            }
-
-        case .ready:
-            HStack {
-                Label("Installed", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Spacer()
-                Button("Delete", role: .destructive) { showDeleteConfirmation = true }
-            }
-
-        case let .failed(reason):
-            VStack(alignment: .leading, spacing: 10) {
-                Text(Self.failureMessage(for: reason))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Button("Try again") { startDownload() }
-            }
-        }
-    }
-
-    private func startDownload() {
-        Task {
-            do {
-                try await store.download()
-            } catch {
-                // Status already reflects `.failed(reason:)` for the UI; the
-                // full error is for debugging only and never shown to the user.
-                Self.logger.error("Whisper model download failed: \(String(describing: error), privacy: .public)")
-            }
-        }
-    }
-
-    private func delete() {
-        do {
-            try store.delete()
-            onDeleted()
-        } catch {
-            Self.logger.error("Whisper model delete failed: \(String(describing: error), privacy: .public)")
-        }
+        ModelDownloadSection(
+            store: store,
+            header: "On-device model",
+            footer: "Whisper transcribes fully on-device. The model is about 480 MB and downloads once — delete it anytime to reclaim the space.",
+            downloadButtonTitle: "Download model (≈480 MB)",
+            deleteAlertTitle: "Delete the on-device model?",
+            deleteAlertMessage: "You'll need to download it again (about 480 MB) to use on-device Whisper.",
+            logCategory: "WhisperModelStore",
+            onDeleted: onDeleted
+        )
     }
 
     /// Generic, actionable user copy — forwards to the shared mapping (the same
-    /// one the Parakeet section uses), which drops the diagnostic detail.
+    /// one every model section uses), which drops the diagnostic detail.
     static func failureMessage(for reason: DownloadableModelStore.FailureReason) -> String {
         DownloadableModelStore.userFacingMessage(for: reason)
     }

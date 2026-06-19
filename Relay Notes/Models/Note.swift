@@ -83,10 +83,18 @@ extension Note {
     }
 
     /// The revision the prod UI shows. Resolves `activeRevisionID` against the
-    /// history; the fallback is unreachable given the ≥1-revision invariant but
-    /// keeps this non-optional and crash-free.
+    /// history, falling back to the most recent revision. The fallback is
+    /// unreachable given the ≥1-revision invariant established at init; the
+    /// `preconditionFailure` surfaces a corrupted store (e.g. a bad migration)
+    /// with a diagnostic instead of a bare force-unwrap.
     var activeRevision: Revision {
-        revisions.first { $0.id == activeRevisionID } ?? orderedRevisions.last!
+        if let active = revisions.first(where: { $0.id == activeRevisionID }) {
+            return active
+        }
+        guard let latest = orderedRevisions.last else {
+            preconditionFailure("Note has no revisions; the ≥1-revision invariant was violated")
+        }
+        return latest
     }
 
     /// The current displayed (and shared) text — the active revision's text.

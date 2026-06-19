@@ -24,7 +24,7 @@ import Foundation
 /// must apply it; `preemph` decodes to 0.97 when the key is absent (an explicit
 /// value — including JSON `null` — is honored as written). `mag_power` likewise
 /// defaults to 2.0 (power spectrum). See `plan.T2.md` §5.2 RISK 1 / T2.1b.
-nonisolated struct ParakeetTDTConfig: Codable, Sendable {
+nonisolated struct ParakeetTDTConfig: Decodable, Sendable {
     let preprocessor: ParakeetPreprocessConfig
     let encoder: ParakeetConformerConfig
     let decoder: ParakeetDecoderConfig
@@ -38,7 +38,7 @@ nonisolated struct ParakeetTDTConfig: Codable, Sendable {
 
 // MARK: - Preprocessor (mel front-end)
 
-nonisolated struct ParakeetPreprocessConfig: Codable, Sendable {
+nonisolated struct ParakeetPreprocessConfig: Decodable, Sendable {
     let sampleRate: Int
     /// `"per_feature"` for this model — per-mel-bin mean/variance normalization
     /// across time. The featurizer (T2.1b) branches on this.
@@ -110,7 +110,7 @@ nonisolated struct ParakeetPreprocessConfig: Codable, Sendable {
 
 // MARK: - Encoder (FastConformer)
 
-nonisolated struct ParakeetConformerConfig: Codable, Sendable {
+nonisolated struct ParakeetConformerConfig: Decodable, Sendable {
     let featIn: Int
     let nLayers: Int
     let dModel: Int
@@ -150,7 +150,7 @@ nonisolated struct ParakeetConformerConfig: Codable, Sendable {
 
 // MARK: - Decoder (prediction network)
 
-nonisolated struct ParakeetPredNetConfig: Codable, Sendable {
+nonisolated struct ParakeetPredNetConfig: Decodable, Sendable {
     let predHidden: Int
     let predRNNLayers: Int
 
@@ -160,7 +160,7 @@ nonisolated struct ParakeetPredNetConfig: Codable, Sendable {
     }
 }
 
-nonisolated struct ParakeetDecoderConfig: Codable, Sendable {
+nonisolated struct ParakeetDecoderConfig: Decodable, Sendable {
     let blankAsPad: Bool
     let vocabSize: Int
     let prednet: ParakeetPredNetConfig
@@ -174,7 +174,7 @@ nonisolated struct ParakeetDecoderConfig: Codable, Sendable {
 
 // MARK: - Joint network
 
-nonisolated struct ParakeetJointNetConfig: Codable, Sendable {
+nonisolated struct ParakeetJointNetConfig: Decodable, Sendable {
     let jointHidden: Int
     let activation: String
     let encoderHidden: Int
@@ -188,7 +188,7 @@ nonisolated struct ParakeetJointNetConfig: Codable, Sendable {
     }
 }
 
-nonisolated struct ParakeetJointConfig: Codable, Sendable {
+nonisolated struct ParakeetJointConfig: Decodable, Sendable {
     let numClasses: Int
     /// The full id→token-piece table (1024 entries). Decode is `vocabulary[id]`
     /// with `"▁"` → space — no SentencePiece runtime needed for transcription.
@@ -216,7 +216,7 @@ nonisolated struct ParakeetJointConfig: Codable, Sendable {
 
 // MARK: - Decoding (TDT greedy)
 
-nonisolated struct ParakeetDecodingConfig: Codable, Sendable {
+nonisolated struct ParakeetDecodingConfig: Decodable, Sendable {
     /// Must be `"tdt"` — the token-and-duration transducer decode path.
     let modelType: String
     /// Frame-advance choices the duration head selects among (`[0,1,2,3,4]`).
@@ -243,14 +243,6 @@ nonisolated struct ParakeetDecodingConfig: Codable, Sendable {
         } else {
             maxSymbols = 10
         }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(modelType, forKey: .modelType)
-        try c.encode(durations, forKey: .durations)
-        var greedy = c.nestedContainer(keyedBy: GreedyKeys.self, forKey: .greedy)
-        try greedy.encode(maxSymbols, forKey: .maxSymbols)
     }
 }
 

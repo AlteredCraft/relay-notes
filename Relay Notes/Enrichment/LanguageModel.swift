@@ -57,12 +57,12 @@ extension LanguageModel {
 
 /// Errors surfaced by a `LanguageModel`. Kept generic at the boundary; the UI maps
 /// these to generic, actionable copy (Projects/CLAUDE.md), and the specific
-/// underlying error stays in logs / the debugger.
+/// underlying error stays in logs / the debugger. Failures from inside the
+/// inference engine (load, decode, OOM, …) propagate verbatim rather than being
+/// re-wrapped here.
 enum LanguageModelError: Error {
     /// The model's weights aren't available (not downloaded, or eviction left no
     /// loaded model). The app gates cleanup on model presence, so this is mostly
     /// defensive — it maps to a generic "try again" at the UI.
     case modelUnavailable
-    /// Generation failed inside the inference engine (load, decode, OOM, …).
-    case generationFailed(any Error)
 }
