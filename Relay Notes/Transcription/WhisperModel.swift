@@ -110,10 +110,13 @@ nonisolated final class WhisperAttention: Module {
             // Cross-attention, cache hit: reuse encoder K/V.
             k = cachedK
             v = cachedV
-        } else {
+        } else if let xa {
             // Cross-attention, cache miss: compute K/V from encoder output once.
-            k = key(xa!)
-            v = value(xa!)
+            k = key(xa)
+            v = value(xa)
+        } else {
+            // Unreachable: `xa` is non-nil in every branch past the self-attention case.
+            preconditionFailure("Whisper cross-attention reached without encoder output")
         }
 
         let wv = qkvAttention(q: q, k: k, v: v, mask: mask)
@@ -306,8 +309,8 @@ nonisolated final class TextDecoder: Module {
 
 // MARK: - Top-level Whisper
 
-/// Encoder + decoder + helpers. Construct via `WhisperModel.loadFromBundle()`
-/// which reads `config.json` + `weights.safetensors` from the app bundle.
+/// Encoder + decoder + helpers. Construct via `WhisperModel.load(from:)`, which
+/// reads `config.json` + `weights.safetensors` from the resolved `ModelLocation`.
 nonisolated final class WhisperModel: Module {
     let dims: ModelDimensions
     @ModuleInfo var encoder: AudioEncoder

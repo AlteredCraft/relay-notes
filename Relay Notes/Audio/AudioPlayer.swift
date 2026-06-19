@@ -52,13 +52,13 @@ final class AudioPlayer {
             return
         }
         isPlaying = true
-        startTimer()
+        startPolling()
     }
 
     func pause() {
         player?.pause()
         isPlaying = false
-        stopTimer()
+        stopPolling()
     }
 
     func stop() {
@@ -66,7 +66,7 @@ final class AudioPlayer {
         player?.currentTime = 0
         isPlaying = false
         currentTime = 0
-        stopTimer()
+        stopPolling()
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
@@ -77,8 +77,8 @@ final class AudioPlayer {
         currentTime = clamped
     }
 
-    private func startTimer() {
-        stopTimer()
+    private func startPolling() {
+        stopPolling()
         pollingTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(100))
@@ -88,7 +88,7 @@ final class AudioPlayer {
         }
     }
 
-    private func stopTimer() {
+    private func stopPolling() {
         pollingTask?.cancel()
         pollingTask = nil
     }
@@ -98,7 +98,7 @@ final class AudioPlayer {
         currentTime = player.currentTime
         if !player.isPlaying && isPlaying {
             isPlaying = false
-            stopTimer()
+            stopPolling()
             if currentTime >= duration - 0.05 {
                 currentTime = duration
             }
