@@ -125,7 +125,8 @@ struct NoteDetailView: View {
         .onDisappear {
             commitTitle()
             player.stop()
-            // Free the ~2.7 GB cleanup model when leaving the note (§3.3).
+            // Free the cleanup model's ~2.7 GB of resident memory when leaving
+            // the note (§3.3). (On-disk it's the ~3.4 GB download — see the spec.)
             Task { await cleaner?.evict() }
         }
         .alert("Delete this note?", isPresented: $showDeleteConfirmation) {

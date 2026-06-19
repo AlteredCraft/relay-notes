@@ -65,6 +65,10 @@ struct NotesListView: View {
     }
 
     private func deleteNotes(at offsets: IndexSet) {
+        // `offsets` index into `filteredNotes` precisely because that's the array
+        // the `ForEach` above renders. If the List's data source ever diverges
+        // from `filteredNotes`, these offsets would delete the wrong rows — keep
+        // the swipe-to-delete source and the `ForEach` source the same array.
         for index in offsets {
             filteredNotes[index].deleteWithAudio(in: modelContext)
         }

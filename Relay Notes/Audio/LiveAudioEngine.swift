@@ -205,7 +205,10 @@ private final class TapState: @unchecked Sendable {
 
         if let converter {
             let ratio = analyzerFormat.sampleRate / tapFormat.sampleRate
-            let outCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1024
+            // Slack on top of the resampled frame count so the converter never
+            // runs short of output capacity on a fractional ratio / filter delay.
+            let resamplerHeadroom: AVAudioFrameCount = 1024
+            let outCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + resamplerHeadroom
             guard let outBuffer = AVAudioPCMBuffer(pcmFormat: analyzerFormat, frameCapacity: outCapacity) else { return }
 
             var supplied = false

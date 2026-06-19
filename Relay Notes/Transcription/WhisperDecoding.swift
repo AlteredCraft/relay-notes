@@ -213,7 +213,7 @@ nonisolated enum WhisperDecoding {
             [1, WhisperTokenizer.sotSequence.count]
         )
 
-        var kvCache: [((MLXArray, MLXArray)?, (MLXArray, MLXArray)?)]? = nil
+        var kvCache: [WhisperLayerKVCache]? = nil
         var resultIDs: [Int] = []
         resultIDs.reserveCapacity(maxLen)
         var sumLogprob: Float = 0

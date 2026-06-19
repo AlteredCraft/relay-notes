@@ -92,21 +92,26 @@ nonisolated enum ParakeetAudio {
         let power = magnitude.pow(config.magPower)
 
         // 5. Mel projection + log. filters[mels, freqs] @ power[freqs, t] → [mels, t].
+        // `logMelFloor` keeps log() finite on silent (zero-power) mel bins.
+        let logMelFloor = 1e-5
         let melSpectrum = MLX.matmul(filters.asType(power.dtype), power.transposed(axes: [1, 0]))
-        let logMel = MLX.log(melSpectrum + 1e-5)
+        let logMel = MLX.log(melSpectrum + logMelFloor)
 
         // 6. Normalization. `per_feature` (this model) z-scores each mel bin across
         //    time; otherwise a global z-score. `std` is population (ddof 0), matching
-        //    numpy/mlx and NeMo. `+1e-5` guards silent bins.
+        //    numpy/mlx and NeMo. `normEpsilon` guards a divide-by-zero on a bin that's
+        //    silent across the whole clip (same 1e-5 value as the log floor above, but
+        //    a different role — keep them named separately).
+        let normEpsilon = 1e-5
         let normalized: MLXArray
         if config.normalize == "per_feature" {
             let mean = logMel.mean(axes: [1], keepDims: true)
             let sd = std(logMel, axes: [1], keepDims: true)
-            normalized = (logMel - mean) / (sd + 1e-5)
+            normalized = (logMel - mean) / (sd + normEpsilon)
         } else {
             let mean = logMel.mean()
             let sd = std(logMel)
-            normalized = (logMel - mean) / (sd + 1e-5)
+            normalized = (logMel - mean) / (sd + normEpsilon)
         }
 
         // 7. [mels, t] → [t, mels] → [1, t, mels].

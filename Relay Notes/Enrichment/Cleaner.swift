@@ -73,7 +73,8 @@ final class Cleaner {
         return Outcome(raw: raw, cleaned: cleaned, modelLabel: Self.modelLabel)
     }
 
-    /// Release the loaded model (~2.7 GB) + clear the MLX buffer pool. Called when
+    /// Release the loaded model (~2.7 GB resident memory — distinct from its
+    /// ~3.4 GB on-disk download) + clear the MLX buffer pool. Called when
     /// the user leaves the note, so the cleanup model isn't resident while idle
     /// (§3.3 — it also shouldn't sit co-resident with an MLX transcriber; cleanup
     /// runs after finalize, never during recording).
