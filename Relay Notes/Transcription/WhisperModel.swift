@@ -14,6 +14,18 @@ import MLXNN
 ///     `set_alignment_heads` are skipped — they aren't needed for greedy
 ///     transcription.
 
+// MARK: - KV cache types
+
+/// One attention's cached `(keys, values)`. Accumulated across autoregressive
+/// decode steps; absent (`nil`) before the first step populates it.
+typealias WhisperKV = (MLXArray, MLXArray)
+
+/// One decoder block's KV cache: `(self-attention, cross-attention)`, each an
+/// optional `WhisperKV`. A decoder pass threads `[WhisperLayerKVCache]` (one entry
+/// per block) through successive calls. Naming the tuple keeps the otherwise-cryptic
+/// element chains legible — e.g. `kvCache[0].0` is block 0's self-attention KV.
+typealias WhisperLayerKVCache = (WhisperKV?, WhisperKV?)
+
 // MARK: - Config
 
 /// Whisper model dimensions, parsed from the HF model's `config.json`.
@@ -91,8 +103,8 @@ nonisolated final class WhisperAttention: Module {
         _ x: MLXArray,
         xa: MLXArray? = nil,
         mask: MLXArray? = nil,
-        kvCache: (MLXArray, MLXArray)? = nil
-    ) -> (MLXArray, (MLXArray, MLXArray)) {
+        kvCache: WhisperKV? = nil
+    ) -> (MLXArray, WhisperKV) {
         let q = query(x)
         let k: MLXArray
         let v: MLXArray
@@ -191,14 +203,14 @@ nonisolated final class ResidualAttentionBlock: Module {
         _ x: MLXArray,
         xa: MLXArray? = nil,
         mask: MLXArray? = nil,
-        kvCache: ((MLXArray, MLXArray)?, (MLXArray, MLXArray)?) = (nil, nil)
-    ) -> (MLXArray, ((MLXArray, MLXArray)?, (MLXArray, MLXArray)?)) {
+        kvCache: WhisperLayerKVCache = (nil, nil)
+    ) -> (MLXArray, WhisperLayerKVCache) {
         let (selfKV, crossKV) = kvCache
 
         let (y, newSelfKV) = attn.forward(attnLn(x), mask: mask, kvCache: selfKV)
         var x = x + y
 
-        var newCrossKV: (MLXArray, MLXArray)? = crossKV
+        var newCrossKV: WhisperKV? = crossKV
         if let crossAttn, let crossAttnLn {
             let (y2, ckv) = crossAttn.forward(crossAttnLn(x), xa: xa, kvCache: crossKV)
             newCrossKV = ckv
@@ -281,8 +293,8 @@ nonisolated final class TextDecoder: Module {
     func callAsFunction(
         _ x: MLXArray,
         xa: MLXArray,
-        kvCache: [((MLXArray, MLXArray)?, (MLXArray, MLXArray)?)]? = nil
-    ) -> (MLXArray, [((MLXArray, MLXArray)?, (MLXArray, MLXArray)?)]) {
+        kvCache: [WhisperLayerKVCache]? = nil
+    ) -> (MLXArray, [WhisperLayerKVCache]) {
         // Position offset = number of previously-cached self-attn keys.
         let offset: Int
         if let kvCache, let firstSelfKV = kvCache[0].0 {
@@ -294,7 +306,7 @@ nonisolated final class TextDecoder: Module {
         let len = x.shape[x.shape.count - 1]
         var y = tokenEmbedding(x) + positionalEmbedding[offset..<(offset + len)]
 
-        var newCache: [((MLXArray, MLXArray)?, (MLXArray, MLXArray)?)] =
+        var newCache: [WhisperLayerKVCache] =
             kvCache ?? Array(repeating: (nil, nil), count: blocks.count)
 
         for (i, block) in blocks.enumerated() {
@@ -344,8 +356,8 @@ nonisolated final class WhisperModel: Module {
     func logits(
         tokens: MLXArray,
         audioFeatures: MLXArray,
-        kvCache: [((MLXArray, MLXArray)?, (MLXArray, MLXArray)?)]? = nil
-    ) -> (MLXArray, [((MLXArray, MLXArray)?, (MLXArray, MLXArray)?)]) {
+        kvCache: [WhisperLayerKVCache]? = nil
+    ) -> (MLXArray, [WhisperLayerKVCache]) {
         decoder(tokens, xa: audioFeatures, kvCache: kvCache)
     }
 

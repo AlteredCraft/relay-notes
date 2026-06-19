@@ -98,12 +98,13 @@ rest:
   (`joint_net`'s own comment warns that property-name-based weight keying here
   is load-bearing and *silently* breakable). Do this with the `ParakeetSmoke`
   device validation in the loop to confirm weights still load.
-- **KV-cache `typealias`** in `Transcription/WhisperModel.swift` +
-  `WhisperDecoding.swift` — name the
-  `((MLXArray, MLXArray)?, (MLXArray, MLXArray)?)` tuple so the `.0.0.shape[1]`
-  index chains become legible. Pure readability, but ~8 mechanical edit sites
-  across ML signatures where a tuple-label mismatch or a missed site breaks the
-  build — not worth doing blind for an internal-only readability gain.
+- ~~**KV-cache `typealias`**~~ — **APPLIED (B, 2026-06-19, build + test verified).**
+  Introduced `WhisperKV = (MLXArray, MLXArray)` (one attention's keys/values) and
+  `WhisperLayerKVCache = (WhisperKV?, WhisperKV?)` (a decoder block's self+cross
+  cache) at the top of `WhisperModel.swift`; substituted all 11 sites across
+  `WhisperModel.swift` + `WhisperDecoding.swift`. Pure compile-time substitution
+  (identical underlying types — element chains like `kvCache[0].0` are unchanged),
+  so the simulator build + 61-test suite fully verify it; no device run needed.
 
 ### Declined
 
