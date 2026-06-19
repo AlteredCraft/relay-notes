@@ -148,6 +148,38 @@ _Items C, D, E, J above are now **applied** (round 3). The rest:_
 
 ---
 
+## Docstring coverage (CodeRabbit gate)
+
+CodeRabbit's pre-merge checks (CHILL profile) flagged **docstring coverage at 50%
+against an 80% threshold** on PR #19's changed set. It's a *soft warning* — it
+didn't block the merge — but it names a real open-source-readiness gap worth
+closing deliberately. Context so the number isn't misread:
+
+- PR #19's own *new* declarations were documented (`WhisperKV` /
+  `WhisperLayerKVCache`, `CoordinatorError.missingDownloadResult`). The 50%
+  reflects **pre-existing undocumented declarations in the touched files**, not
+  the changes themselves.
+- The check re-measures the **changed files on each PR**, so it's a per-PR moving
+  target — backfilling the heavily-touched files is what makes it durably pass.
+
+**Goal:** bring docstring coverage on the public/internal API surface to **≥80%**
+as part of the pre-open-source pass. Approach:
+
+- Backfill `///` comments on the most-touched types/methods first (the model
+  stores, transcriber/decoder entry points, the view models) rather than chasing
+  the metric file-by-file.
+- Ensure every *new* public/internal declaration ships with a doc comment, so the
+  number trends up rather than down.
+- **Don't** add filler to satisfy the percentage — `/// The initializer.` on an
+  obvious `init` is noise. Document the non-obvious (invariants, units, isolation,
+  ownership), the same bar the model layer already meets (this review calls those
+  doc comments "notably good"). A metric-driven pass that lowers signal is a
+  regression even if the number goes green.
+
+Build/test impact: none (comments only); no device run needed.
+
+---
+
 ## Notes for reviewers
 
 - The **provider abstraction** (everything behind a protocol — `Transcriber`,
