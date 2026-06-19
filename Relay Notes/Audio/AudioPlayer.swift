@@ -99,7 +99,10 @@ final class AudioPlayer {
         if !player.isPlaying && isPlaying {
             isPlaying = false
             stopPolling()
-            if currentTime >= duration - 0.05 {
+            // Within this much of the end, snap to the exact duration so the
+            // scrubber lands on 0:00-remaining instead of a fraction short.
+            let endSnapThreshold: TimeInterval = 0.05
+            if currentTime >= duration - endSnapThreshold {
                 currentTime = duration
             }
         }

@@ -49,6 +49,18 @@ build gate applies.
 | Extract `engineRow(_:title:subtitle:isEnabled:)` | `Views/SettingsView.swift` | Collapsed three near-identical engine `Button` rows into one helper. |
 | Downgrade Parakeet config chain `Codable` → `Decodable` + delete dead `encode(to:)` | `Transcription/Parakeet/ParakeetConfig.swift` | Configs are decode-only (no `JSONEncoder` anywhere). The custom `ParakeetDecodingConfig.encode(to:)` existed only because `maxSymbols` has no `CodingKeys` case; the whole chain went to `Decodable` since the parent's synthesized `Encodable` required the child's. |
 
+### Applied — round 3 polish (committed 2026-06-19, **build + test verified**)
+
+The first pass actually compiled + tested locally (`xcodebuild build` + the 61-test
+suite, both green on the iPhone 17 Pro simulator). No behavior change on any path.
+
+| Item | Files | Resolution |
+|---|---|---|
+| **C — "GB mismatch"** | `Enrichment/Cleaner.swift`, `Views/NoteDetailView.swift` | **False alarm.** The spec is authoritatively `downloadSizeMB: 3446` (≈3.4 GB on disk; matches the UI copy and the summed `RemoteFile.size`s). The two "~2.7 GB" comments describe *resident memory freed* — a different quantity (Gemma E2B's per-layer-embedding/MatFormer makes RAM < disk). Clarified the comments as "resident memory," **not** forced equal to the download. |
+| **D — magic numbers** | `ParakeetAudio.swift`, `AudioPlayer.swift`, `LiveAudioEngine.swift`, `Models/Note.swift` | `ParakeetAudio`'s two same-valued `1e-5`s split into `logMelFloor` (log-finite on silent bins) vs `normEpsilon` (z-score divide guard); `AudioPlayer.endSnapThreshold` (0.05 s), `LiveAudioEngine.resamplerHeadroom` (1024 frames), `Note.tieBreakNudge` (1 ms). Untyped locals to preserve each literal's exact inferred type. |
+| **E — `deleteNotes(at:)` invariant** | `Views/NotesListView.swift` | Comment: the `IndexSet` offsets index into `filteredNotes` *because* that's the `ForEach` source; keep them the same array or swipe-delete hits the wrong rows. |
+| **J — `-1` HTTP-status sentinel** | `Transcription/DownloadableModelStore.swift` | `unexpectedHTTPStatus(-1)` (the "succeeded with no file" guard) → distinct `CoordinatorError.missingDownloadResult`; no longer masquerades as a real status in logs. Falls through to the generic network-failure arm. |
+
 ---
 
 ## Deliberately *not* changed
@@ -105,32 +117,33 @@ rest:
 
 ## Lower-priority polish
 
-- **Doc copy mismatch:** "~2.7 GB" (in `Cleaner.swift` / `MLXLanguageModel.swift`
-  comments) vs "about 3.4 GB" (the `CleanupModelSection` UI string) for the
-  cleanup model. Reconcile before open-sourcing.
-- **Magic-number constants** that would read better as named `private static let`s:
-  `duration - 0.05` (`AudioPlayer.tick`), the two distinct `1e-5` epsilons in
-  `ParakeetAudio` (log-floor vs normalization guard — same value, different
-  meaning), `+ 1024` resampler headroom (`LiveAudioEngine`), `0.001` timestamp
-  nudge (`Note.nextTimestamp`).
-- **`NotesListView.deleteNotes(at:)`** indexes `filteredNotes` by `IndexSet`
-  offset — correct today (matches the `ForEach` source), but a comment asserting
-  that invariant guards against silent off-by-one deletes if the rendered list
-  source ever diverges.
-- **`RecorderViewModel.stopAndTranscribe()`** repeats the
-  `updatesTask`/`session`/`currentAudioURL` teardown across three paths; cancel
-  once up-front after `engine.stop()` to drop two copies.
-- **`ModelStores`** has six `init` overloads as a test seam — a single defaulted
-  init or a `static func forTesting(...)` factory would be more pragmatic and
-  avoid silently spinning up real filesystem-backed stores for unspecified slots.
-- **Error-type naming inconsistency:** `WhisperModelError` (free-standing) vs
+_Items C, D, E, J above are now **applied** (round 3). The rest:_
+
+- **`RecorderViewModel.stopAndTranscribe()`** (F) repeats the
+  `updatesTask`/`session`/`currentAudioURL` teardown across the guard-else and
+  success paths (the catch path's `cleanupAfterFailure()` is a *heavier*
+  teardown — `await session.cancel()` + the feed/interruption/elapsed tasks — and
+  stays separate). **Correction to the original note:** you can't "cancel once
+  up-front and nil `session`" — the success path calls `try await session.finish()`
+  first. The real fix captures a local `let session = self.session`, nils the
+  stored property + cancels `updatesTask` immediately after `engine.stop()`, then
+  calls `.finish()` on the local. Collapses the two identical light copies into
+  one. Touches the live recording path → build + recorder tests (ideally device).
+- **`ModelStores`** (G) has six `init` overloads as a test seam — a single
+  defaulted init or a `static func forTesting(...)` factory would be more pragmatic
+  and avoid silently spinning up real filesystem-backed stores for unspecified
+  slots. Build/test gated (construction is used app-wide + in tests).
+- **Error-type naming inconsistency** (H) — `WhisperModelError` (free-standing) vs
   nested `WhisperAudio.Error` / `WhisperTokenizer.Error` (which force
   `Swift.Error` qualification). Pick the free-standing form for consistency.
-- **`NoteDetailView` / `RecorderView`** each carry their own seconds→`m:ss`
-  formatter; consolidate to one shared helper.
-- **`DownloadableModelStore`**: the `-1` sentinel in
-  `unexpectedHTTPStatus(-1)` reads as a real HTTP status in logs — prefer a
-  distinct `.internalInconsistency`-style case.
+  *Low value — cosmetic churn across the Whisper layer; skip unless doing a
+  broader rename.*
+- **Time formatter** (I) — **the original framing was stale.** `RecorderView` does
+  *not* carry its own formatter; it calls `RecorderViewModel.formatElapsed`
+  (`RecorderView.swift:65`). The only duplication is `NoteDetailView`'s private
+  `String(format: "%d:%02d", …)`. And the two take *different input types*
+  (`Duration` vs an `Int` of seconds), so a shared helper buys ~3 lines for added
+  friction. *Skip, or a trivial shared helper at most.*
 
 ---
 

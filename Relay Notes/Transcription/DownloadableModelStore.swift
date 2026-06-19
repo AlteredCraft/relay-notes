@@ -461,6 +461,10 @@ final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @unchecke
 
     enum CoordinatorError: Error {
         case unexpectedHTTPStatus(Int)
+        /// The download reported success but left no file — a "can't happen"
+        /// internal-inconsistency guard, kept distinct so it never masquerades
+        /// as a real HTTP status (e.g. `-1`) in logs.
+        case missingDownloadResult
     }
 
     private enum RetryDecision {
@@ -610,7 +614,7 @@ final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @unchecke
         } else {
             // Shouldn't reach here — didFinishDownloadingTo runs first on success
             // and either set `preserved` or already resumed with an error.
-            cont?.resume(throwing: CoordinatorError.unexpectedHTTPStatus(-1))
+            cont?.resume(throwing: CoordinatorError.missingDownloadResult)
         }
         invalidate()
     }

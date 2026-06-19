@@ -177,8 +177,11 @@ extension Note {
     /// order is deterministic even when appends happen within the same instant
     /// (real wall-clock when it's already ahead, nudged forward only on a tie).
     private func nextTimestamp() -> Date {
+        // On a same-instant tie, nudge past the latest by a hair so ordering stays
+        // strict and deterministic (1 ms — below any human-perceptible gap).
+        let tieBreakNudge: TimeInterval = 0.001
         let latest = revisions.map(\.createdAt).max() ?? .distantPast
         let now = Date.now
-        return now > latest ? now : latest.addingTimeInterval(0.001)
+        return now > latest ? now : latest.addingTimeInterval(tieBreakNudge)
     }
 }
