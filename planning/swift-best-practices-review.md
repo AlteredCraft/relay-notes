@@ -19,10 +19,37 @@ Reviewed the full source tree (55 files, ~8.8k lines). This doc is the running
 record of what was found, what was applied, and what's left. Update it as items
 are worked.
 
-> **Build caveat.** The first pass was done in a Linux container with no Xcode
-> toolchain, so nothing below was compiler-verified there. Every applied change
-> is happy-path-behavior-preserving, but a full Xcode build + `xcodebuild test`
-> is the gate before merging any of it.
+> **Build status.** The first pass (surgical + view/config) was authored in a Linux
+> container with no Xcode toolchain; rounds **3** and **B** were authored *and*
+> build+test verified locally (iPhone 17 Pro simulator, 61-test suite green).
+> Everything in the **Applied** sections is now merged to `main` and compiles/tests
+> green. Remaining items keep the same gate: `xcodebuild build` + `xcodebuild test`
+> before merge — item **A** also needs a device `ParakeetSmoke` run.
+
+---
+
+## Remaining work — start here
+
+Open items only — everything below is **applied** / **declined** / **left-alone**.
+Priority order; each links to its detail section further down.
+
+- [ ] **Docstring coverage → ≥80%** (CodeRabbit gate). Comments-only, no build risk.
+  Backfill the most-touched API surface; document the non-obvious, **not** filler.
+  → *Docstring coverage*.
+- [ ] **F — `RecorderViewModel.stopAndTranscribe()` teardown dedup.** Collapse the
+  two identical light teardowns via a local `let session` captured *before*
+  `session.finish()`. Live recording path → build + recorder tests (ideally device).
+  → *Lower-priority polish*.
+- [ ] **G — `ModelStores` six-`init` seam → one defaulted init / `forTesting(...)`.**
+  Build/test gated (construction is used app-wide + in tests). → *Lower-priority polish*.
+- [ ] **A — `ParakeetDecoder` per-step `fatalError` → stored `Linear`** (deferred).
+  Needs a device `ParakeetSmoke` run — MLXNN parameter-key derivation is silently
+  breakable here. → *Larger refactors → Deferred*.
+
+**Not doing** (recorded for completeness): **H** (error-type naming) and **I** (time
+formatter) — low value; **preset → `switch`** — declined (`SpeechTranscriber.Preset`
+is a struct, not a closed enum). **Gate for any code change:** `xcodebuild build` +
+`xcodebuild test` (simulator suite); **A** additionally needs a device `ParakeetSmoke` run.
 
 ---
 
