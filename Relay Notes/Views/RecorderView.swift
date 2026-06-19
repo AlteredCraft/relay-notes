@@ -4,6 +4,10 @@ import SwiftUI
 
 struct RecorderView: View {
     let viewModel: RecorderViewModel
+    /// When a search filter is active, starting a new recording is blocked: the
+    /// new note could be hidden by the filter and look unsaved (GH #6). Stopping
+    /// an in-progress recording is never blocked.
+    var searchActive: Bool = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -73,7 +77,9 @@ struct RecorderView: View {
     private var statusText: some View {
         switch viewModel.state {
         case .idle:
-            Text("Tap to record")
+            // Explain the disabled mic rather than leaving it silently greyed
+            // out when a filter is active (GH #6).
+            Text(searchActive ? "Clear search to record" : "Tap to record")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         case .recording:
@@ -124,7 +130,14 @@ struct RecorderView: View {
                 .frame(width: 80, height: 80)
                 .foregroundStyle(isRecording ? Color.red : Color.accentColor)
         }
-        .disabled(isFinalizing)
+        .disabled(isRecordButtonDisabled)
+    }
+
+    private var isRecordButtonDisabled: Bool {
+        // Never block stopping an in-progress recording — only block *starting*
+        // a new one while a filter is active (GH #6) or while finalizing.
+        if isFinalizing { return true }
+        return searchActive && !isRecording
     }
 
     private var isRecording: Bool {

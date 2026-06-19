@@ -17,6 +17,12 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var searchText = ""
 
+    /// True when a non-empty search filter is hiding non-matching notes — the
+    /// condition that makes a freshly recorded note look unsaved (GH #6).
+    private var isFiltering: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -29,7 +35,10 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 Divider()
                 if let viewModel {
-                    RecorderView(viewModel: viewModel)
+                    // A new note whose transcript doesn't match an active filter
+                    // would be hidden from the list, looking like it failed to
+                    // save — so block starting a recording while filtering (GH #6).
+                    RecorderView(viewModel: viewModel, searchActive: isFiltering)
                         .padding(.vertical, 16)
                 }
             }
