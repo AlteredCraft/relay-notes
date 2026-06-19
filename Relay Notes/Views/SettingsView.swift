@@ -73,76 +73,59 @@ struct SettingsView: View {
 
     private var engineSection: some View {
         Section {
-            Button {
-                tunings.engine = .apple
-            } label: {
-                HStack {
-                    Text("Apple Speech")
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    if tunings.engine == .apple {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(.tint)
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            let whisperReady = stores.isReady(.whisperMLX)
-            Button {
-                tunings.engine = .whisperMLX
-            } label: {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("On-device (Whisper)")
-                            .foregroundStyle(whisperReady ? .primary : .secondary)
-                        if !whisperReady {
-                            Text("Download the model below to enable")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                    if tunings.engine == .whisperMLX {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(.tint)
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!whisperReady)
-
-            let parakeetReady = stores.isReady(.parakeetMLX)
-            Button {
-                tunings.engine = .parakeetMLX
-            } label: {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("On-device (Parakeet)")
-                            .foregroundStyle(parakeetReady ? .primary : .secondary)
-                        if !parakeetReady {
-                            Text("Download the model below to enable")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                    if tunings.engine == .parakeetMLX {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(.tint)
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!parakeetReady)
+            engineRow(.apple, title: "Apple Speech")
+            engineRow(
+                .whisperMLX,
+                title: "On-device (Whisper)",
+                subtitle: "Download the model below to enable",
+                isEnabled: stores.isReady(.whisperMLX)
+            )
+            engineRow(
+                .parakeetMLX,
+                title: "On-device (Parakeet)",
+                subtitle: "Download the model below to enable",
+                isEnabled: stores.isReady(.parakeetMLX)
+            )
         } header: {
             Text("Transcription engine")
         } footer: {
             Text("Apple Speech runs on-device with no model choice. The On-device engines (Whisper, Parakeet) transcribe locally via MLX — each becomes selectable once you download its model below.")
         }
+    }
+
+    /// One selectable engine row: title, an optional subtitle shown only while
+    /// the engine is disabled (the "download the model" hint), and a trailing
+    /// checkmark on the active engine. Tapping selects the engine.
+    @ViewBuilder
+    private func engineRow(
+        _ engine: TranscriptionEngine,
+        title: String,
+        subtitle: String? = nil,
+        isEnabled: Bool = true
+    ) -> some View {
+        Button {
+            tunings.engine = engine
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .foregroundStyle(isEnabled ? .primary : .secondary)
+                    if let subtitle, !isEnabled {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if tunings.engine == engine {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
     }
 
     private var captureSection: some View {

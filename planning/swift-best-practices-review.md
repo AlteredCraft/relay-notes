@@ -38,6 +38,17 @@ Low-risk changes confident to compile with no happy-path behavior change.
 | Stale doc `loadFromBundle()` → `load(from:)` | `Transcription/WhisperModel.swift` | Referenced a method that doesn't exist. |
 | `orderedRevisions.last!` → diagnostic `preconditionFailure` | `Models/Note.swift` | The comment claimed "crash-free" while force-unwrapping; now surfaces a corrupted/migrated store with a message instead of a bare trap. |
 
+### Applied — view/config refactors (committed 2026-06-19)
+
+A second round, taken on after the safe set. Still uncompiled here — same
+build gate applies.
+
+| Refactor | Files | Notes |
+|---|---|---|
+| Dedup the three model-download sections | new `Views/ModelDownloadSection.swift`; `WhisperModelSection`/`ParakeetModelSection`/`CleanupModelSection` now thin wrappers | Shared view typed on the `@Observable` `DownloadableModelStore` base; the wrappers supply only copy + `onDeleted`. `WhisperModelSection.failureMessage` kept (test-referenced); `SettingsView` call sites unchanged. View composition only. |
+| Extract `engineRow(_:title:subtitle:isEnabled:)` | `Views/SettingsView.swift` | Collapsed three near-identical engine `Button` rows into one helper. |
+| Downgrade Parakeet config chain `Codable` → `Decodable` + delete dead `encode(to:)` | `Transcription/Parakeet/ParakeetConfig.swift` | Configs are decode-only (no `JSONEncoder` anywhere). The custom `ParakeetDecodingConfig.encode(to:)` existed only because `maxSymbols` has no `CodingKeys` case; the whole chain went to `Decodable` since the parent's synthesized `Encodable` required the child's. |
+
 ---
 
 ## Deliberately *not* changed
@@ -60,38 +71,35 @@ Things the review flagged that are better left alone:
 
 ---
 
-## Recommended larger refactors (needs Xcode verification)
+## Larger refactors — remaining / declined
 
-Real improvements, but each needs a compiler in the loop. Ranked by value.
+Items 1, 3, and 5 from the original list are now **applied** (see above). The
+rest:
 
-1. **Dedup the three model sections** — `Views/WhisperModelSection.swift`,
-   `ParakeetModelSection.swift`, `CleanupModelSection.swift` are ~90% identical
-   (the `.missing`/`.downloading`/`.ready`/`.failed` status switch, the
-   download/delete actions, the delete-confirmation alert). A shared
-   download-section view collapses ~270 lines to ~100. This is view composition,
-   not a provider-abstraction change, so it's CLAUDE.md-safe. *(If extracted to
-   its own file, wire it into the pbxproj.)*
-2. **`Transcription/Parakeet/ParakeetDecoder.swift` — `fatalError` on the
-   per-decode-step hot path** (`joint_net[2] as? Linear`, inside
-   `callAsFunction`). The invariant is fixed at `init`; resolve the final
-   `Linear` once into a typed stored property to remove a per-step cast + crash
-   path.
-3. **Extract `engineRow(title:subtitle:isSelected:isEnabled:onSelect:)` in
-   `Views/SettingsView.swift`** — the Whisper/Parakeet/Apple engine `Button`
-   rows are byte-for-byte the same shape.
-4. **KV-cache `typealias`** in `Transcription/WhisperModel.swift` +
-   `WhisperDecoding.swift` — name the
-   `((MLXArray, MLXArray)?, (MLXArray, MLXArray)?)` tuple so the `.0.0.shape[1]`
-   index chains become legible. Pure readability, but ~8 mechanical edit sites
-   where a typo breaks the build.
-5. **`Transcription/Parakeet/ParakeetConfig.swift` — drop dead
-   `Encodable`/`encode(to:)`.** Config types are decode-only; this removes the
-   most fragile block in the file. Verify nothing encodes them first.
-6. **`presetLabel` / `presetID` → `switch`** (`Views/RecorderView.swift`,
-   `Recording/Tunings.swift`) *if* `SpeechTranscriber.Preset` is an enum — gains
-   compiler exhaustiveness so a new preset can't silently persist as
-   `"transcription"`. Confirm the type first; if it's a struct of static lets,
-   the if-chain is unavoidable and should get a comment saying so.
+### Deferred — do with a compiler in the loop
+
+- **`Transcription/Parakeet/ParakeetDecoder.swift` — `fatalError` on the
+  per-decode-step hot path** (`joint_net[2] as? Linear`, inside
+  `callAsFunction`). Resolving the final `Linear` once into a stored property
+  would remove the per-step cast + crash path — but adding a second
+  `Linear`-typed property risks MLXNN's parameter-tree key derivation
+  (`joint_net`'s own comment warns that property-name-based weight keying here
+  is load-bearing and *silently* breakable). Do this with the `ParakeetSmoke`
+  device validation in the loop to confirm weights still load.
+- **KV-cache `typealias`** in `Transcription/WhisperModel.swift` +
+  `WhisperDecoding.swift` — name the
+  `((MLXArray, MLXArray)?, (MLXArray, MLXArray)?)` tuple so the `.0.0.shape[1]`
+  index chains become legible. Pure readability, but ~8 mechanical edit sites
+  across ML signatures where a tuple-label mismatch or a missed site breaks the
+  build — not worth doing blind for an internal-only readability gain.
+
+### Declined
+
+- **`presetLabel` / `presetID` → `switch`** — `SpeechTranscriber.Preset` is an
+  Equatable **struct** with static factory values (`.transcription`,
+  `.progressiveTranscription`, …), not a closed enum, so it can't be `switch`ed
+  exhaustively. The `if preset == …` chain with a fallback arm is the correct
+  idiom for an open set; a `switch` would gain nothing.
 
 ---
 
