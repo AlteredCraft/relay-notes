@@ -27,6 +27,9 @@ final class TranscriberFactory {
         self.stores = stores
     }
 
+    /// The cached `Transcriber` for `engine`, constructing it on first request.
+    /// Apple Speech is cached independently; the two MLX engines share a single
+    /// slot, so selecting one evicts the other (see `liveMLXTranscriber`).
     func transcriber(for engine: TranscriptionEngine) -> any Transcriber {
         switch engine {
         case .apple:

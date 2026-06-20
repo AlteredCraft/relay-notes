@@ -2,6 +2,10 @@ import AVFoundation
 import Foundation
 import Speech
 
+/// `Transcriber` over Apple's on-device `SpeechAnalyzer`/`SpeechTranscriber` — the
+/// app's default engine. `nonisolated` (no MLX, no shared mutable state); both the
+/// file-based and streaming paths request authorization, resolve a supported
+/// locale, install the on-device model assets, then run the analyzer.
 nonisolated final class AppleSpeechTranscriber: Transcriber {
     private let locale: Locale
 
@@ -9,6 +13,8 @@ nonisolated final class AppleSpeechTranscriber: Transcriber {
         self.locale = locale
     }
 
+    /// One-shot file transcription via `SpeechAnalyzer.analyzeSequence(from:)`,
+    /// joining recognized segments. Throws `.noSpeechDetected` on an empty result.
     func transcribe(_ audio: URL, options: TranscriptionOptions) async throws -> String {
         guard case .apple(let appleOptions) = options else {
             preconditionFailure("AppleSpeechTranscriber received non-apple options — factory and engine selection are out of sync")
@@ -79,6 +85,8 @@ nonisolated final class AppleSpeechTranscriber: Transcriber {
         return transcript
     }
 
+    /// Opens a live session: starts the analyzer over an `AnalyzerInput` stream and
+    /// returns an `AppleSpeechSession` that yields volatile + finalized partials.
     func makeStreamingSession(options: TranscriptionOptions) async throws -> any TranscriptionSession {
         guard case .apple(let appleOptions) = options else {
             preconditionFailure("AppleSpeechTranscriber received non-apple options — factory and engine selection are out of sync")
@@ -144,6 +152,10 @@ nonisolated final class AppleSpeechTranscriber: Transcriber {
     }
 }
 
+/// Live Apple Speech session. A background task drains `transcriber.results`,
+/// yielding a running transcript to `updates`: volatile (in-progress) results are
+/// appended after the finalized prefix so the live card updates as you speak, and
+/// each `isFinal` result is committed into that prefix.
 private final class AppleSpeechSession: TranscriptionSession {
     let audioFormat: AVAudioFormat?
     let updates: AsyncStream<String>
@@ -203,6 +215,8 @@ private final class AppleSpeechSession: TranscriptionSession {
         inputContinuation.yield(AnalyzerInput(buffer: buffer))
     }
 
+    /// Closes input, finalizes the analyzer through end-of-input, and returns the
+    /// committed transcript. Throws `.noSpeechDetected` when it's empty.
     func finish() async throws -> String {
         inputContinuation.finish()
         do {
@@ -218,6 +232,8 @@ private final class AppleSpeechSession: TranscriptionSession {
         return transcript
     }
 
+    /// Tears the session down without a result: closes input, cancels the analyzer
+    /// and the results task, and finishes the `updates` stream.
     func cancel() async {
         inputContinuation.finish()
         await analyzer.cancelAndFinishNow()

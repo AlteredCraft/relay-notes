@@ -19,7 +19,9 @@ import Observation
 @MainActor
 @Observable
 final class ModelStores {
+    /// Backing store for the Whisper (small.en) MLX engine.
     let whisper: WhisperModelStore
+    /// Backing store for the Parakeet (TDT 0.6b) MLX engine.
     let parakeet: ParakeetModelStore
     /// The L2 cleanup (LLM) model store. Not a `TranscriptionEngine`, so it's a
     /// sibling here — outside the engine `store(for:)` / `readyEngines` machinery —
@@ -27,51 +29,25 @@ final class ModelStores {
     /// Cleanup gating reads `cleanup.status` directly (see `NoteDetailView`).
     let cleanup: CleanupModelStore
 
-    init() {
-        self.whisper = WhisperModelStore()
-        self.parakeet = ParakeetModelStore()
-        self.cleanup = CleanupModelStore()
-    }
-
-    // Explicit-store overloads for tests (e.g. a store bound to a temp directory).
-    // Each unspecified store is the real Application-Support-backed one. These are
-    // separate inits rather than defaulted parameters because a default value like
-    // `= WhisperModelStore()` is evaluated in a nonisolated context and can't call
-    // the `@MainActor` store init; constructing in-body (this `@MainActor` init) is
-    // fine.
-
-    init(whisper: WhisperModelStore) {
-        self.whisper = whisper
-        self.parakeet = ParakeetModelStore()
-        self.cleanup = CleanupModelStore()
-    }
-
-    init(parakeet: ParakeetModelStore) {
-        self.whisper = WhisperModelStore()
-        self.parakeet = parakeet
-        self.cleanup = CleanupModelStore()
-    }
-
-    init(whisper: WhisperModelStore, parakeet: ParakeetModelStore) {
-        self.whisper = whisper
-        self.parakeet = parakeet
-        self.cleanup = CleanupModelStore()
-    }
-
-    init(cleanup: CleanupModelStore) {
-        self.whisper = WhisperModelStore()
-        self.parakeet = ParakeetModelStore()
-        self.cleanup = cleanup
-    }
-
-    /// All-explicit overload — lets a test pin every store to a temp directory so
-    /// engine readiness is deterministic *while* the cleanup store is `.ready`,
-    /// which is what makes "a ready cleanup model is excluded from engine gating"
-    /// (the design choice this registry encodes) directly assertable.
-    init(whisper: WhisperModelStore, parakeet: ParakeetModelStore, cleanup: CleanupModelStore) {
-        self.whisper = whisper
-        self.parakeet = parakeet
-        self.cleanup = cleanup
+    /// Builds the registry, defaulting any store the caller leaves out to the real
+    /// Application-Support-backed one. Production calls `ModelStores()` (all
+    /// defaulted); tests pass only the slots they pin to a temp directory — e.g.
+    /// `ModelStores(whisper:)` for deterministic Whisper readiness, or the
+    /// all-explicit form to assert "a ready cleanup model is excluded from engine
+    /// gating" (the design choice this registry encodes).
+    ///
+    /// The slots are `nil`-defaulted rather than `= WhisperModelStore()`-defaulted
+    /// because a non-`nil` default is evaluated in a nonisolated context and can't
+    /// call the `@MainActor` store init; the `??` fallbacks run in this `@MainActor`
+    /// init body, where constructing a store is fine.
+    init(
+        whisper: WhisperModelStore? = nil,
+        parakeet: ParakeetModelStore? = nil,
+        cleanup: CleanupModelStore? = nil
+    ) {
+        self.whisper = whisper ?? WhisperModelStore()
+        self.parakeet = parakeet ?? ParakeetModelStore()
+        self.cleanup = cleanup ?? CleanupModelStore()
     }
 
     /// The download store backing `engine`, or `nil` for engines with no
