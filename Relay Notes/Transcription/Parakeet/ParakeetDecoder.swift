@@ -115,7 +115,14 @@ nonisolated final class ParakeetJointNetwork: Module {
     /// `jointNet` would key as `joint.jointNet.*` and silently miss the
     /// safetensors `joint.joint_net.2.*` under `update(verify: .none)` — leaving
     /// the final Linear at random init and producing real-but-wrong tokens.
-    let joint_net: [Module]
+    ///
+    /// **Typed `[UnaryLayer]` (not `[Module]`)** so the joint can apply the
+    /// trailing Linear as `joint_net[2](…)` directly — every element is a
+    /// `UnaryLayer` — instead of a per-decode-step `as? Linear` cast + `fatalError`.
+    /// The element type does **not** affect weight keying: MLXNN reflects the array
+    /// by runtime value (`build(value:)` casts to `[Any]` and inspects each element
+    /// as `Module`), so each slot still keys by index (`joint_net.0/1/2`).
+    let joint_net: [UnaryLayer]
 
     nonisolated init(config: ParakeetJointConfig) {
         let net = config.jointnet
@@ -133,10 +140,9 @@ nonisolated final class ParakeetJointNetwork: Module {
         let e = enc(encFrame).expandedDimensions(axis: 2)   // [1, 1, 1, jointHidden]
         let p = pred(predOut).expandedDimensions(axis: 1)   // [1, 1, 1, jointHidden]
         let activated = relu(e + p)
-        guard let finalLinear = joint_net[2] as? Linear else {
-            fatalError("joint_net[2] must be the final Linear")
-        }
-        return finalLinear(activated)
+        // `joint_net[2]` is the final `Linear` (slots 0/1 are the activation +
+        // identity that preserve the safetensors index); apply it via `UnaryLayer`.
+        return joint_net[2](activated)
     }
 }
 
